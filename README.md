@@ -18,6 +18,8 @@ Open `index.html` in a browser, or serve the folder:
 npx serve .
 ```
 
+Live: https://iron-dirt.netlify.app (once deployed; see below)
+
 | | Steer | Gas | Reverse | Nitro |
 |---|---|---|---|---|
 | Player 1 | ← → | ↑ | ↓ | Right Shift, Enter or Space |
@@ -49,3 +51,7 @@ In one-player mode either set works. `V` switches view, `P` pauses, `M` toggles 
 | `src/game.js` | Title, career, results, speed shop, seasons, game over |
 | `src/audio.js` | Engine sounds, effects and chiptune music |
 | `src/font.js` | 5x7 bitmap font |
+
+## Deploy
+
+It is a static site, so any static host works. `netlify.toml` tells Netlify to publish the repository root with no build command: connect the repository in Netlify (or drop `index.html` plus the `src` folder on https://app.netlify.com/drop) and it is live.
