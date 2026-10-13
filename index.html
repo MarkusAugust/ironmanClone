@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Iron Dirt</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap">
+<style>
+  /* Arcade cabinet: the screen is the hero, a bezel frames it, a key legend sits below. */
+  :root {
+    --cab: #0e0b12;
+    --bezel: #1c1722;
+    --bezel-edge: #3a2f44;
+    --marquee: #ffc93a;
+    --ink: #d8d0e2;
+    --dim: #8a8296;
+    --key: #2a2332;
+    --font-pixel: 'Press Start 2P', ui-monospace, 'Courier New', monospace;
+    color-scheme: dark;
+  }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: radial-gradient(ellipse at 50% 30%, #241b2c 0%, var(--cab) 70%);
+    background-color: var(--cab);
+    color: var(--ink);
+    font-family: var(--font-pixel);
+    overflow: hidden;
+    -webkit-user-select: none; user-select: none;
+    touch-action: manipulation;
+  }
+  #wrap {
+    height: 100%;
+    box-sizing: border-box;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 12px;
+    padding-inline: 16px;
+    padding-block: 12px;
+  }
+  #bezel {
+    background: linear-gradient(180deg, #2a2232, var(--bezel));
+    border: 2px solid var(--bezel-edge);
+    border-radius: 10px;
+    padding: 10px;
+    box-shadow: 0 0 0 4px #08060a, 0 18px 50px rgba(0,0,0,.6), inset 0 0 24px rgba(0,0,0,.6);
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+  #screen {
+    display: block;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    background: #000;
+    border-radius: 3px;
+    max-width: 100%;
+  }
+  #legend {
+    display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 22px;
+    font-size: 9px; line-height: 1.6; color: var(--dim);
+    max-width: 820px;
+  }
+  #legend b { color: var(--marquee); font-weight: 400; }
+  kbd {
+    font-family: ui-monospace, 'Courier New', monospace; font-size: 11px;
+    background: var(--key); color: var(--ink);
+    border: 1px solid var(--bezel-edge); border-bottom-width: 2px;
+    border-radius: 3px; padding: 1px 4px;
+  }
+  #touchpad {
+    position: fixed; left: 0; right: 0; bottom: 0;
+    padding: 0 16px calc(14px + env(safe-area-inset-bottom, 0px));
+    display: flex; justify-content: space-between; align-items: flex-end;
+    pointer-events: none;
+  }
+  #touchpad .grp { display: flex; gap: 12px; pointer-events: auto; }
+  #touchpad button {
+    width: 68px; height: 68px; border-radius: 50%;
+    background: rgba(40, 32, 48, .72); color: var(--ink);
+    border: 2px solid var(--bezel-edge);
+    font-family: var(--font-pixel); font-size: 10px;
+    touch-action: none;
+  }
+  #touchpad button.on { background: rgba(255, 201, 58, .55); color: #000; }
+  #touchpad button.nitro { border-color: #e03030; color: #ff8a80; }
+  #touchpad button:focus-visible { outline: 2px solid var(--marquee); }
+  @media (max-height: 520px) { #legend { display: none; } }
+  @media (pointer: coarse) { #legend { display: none; } }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="bezel"><canvas id="screen" width="400" height="300" aria-label="Iron Dirt game screen"></canvas></div>
+  <div id="legend">
+    <span><b>P1</b> <kbd>&larr;</kbd><kbd>&rarr;</kbd> steer <kbd>&uarr;</kbd> gas <kbd>&darr;</kbd> reverse <kbd>R-Shift</kbd>/<kbd>Enter</kbd> nitro</span>
+    <span><b>P2</b> <kbd>A</kbd><kbd>D</kbd> steer <kbd>W</kbd> gas <kbd>S</kbd> reverse <kbd>Q</kbd>/<kbd>L-Shift</kbd> nitro</span>
+    <span><kbd>P</kbd> pause <kbd>M</kbd> sound</span>
+  </div>
+</div>
+<div id="touchpad" hidden>
+  <div class="grp">
+    <button type="button" data-key="ArrowLeft" aria-label="Steer left">&#9664;</button>
+    <button type="button" data-key="ArrowRight" aria-label="Steer right">&#9654;</button>
+  </div>
+  <div class="grp">
+    <button type="button" data-key="ArrowDown" aria-label="Brake and reverse">BRAKE</button>
+    <button type="button" class="nitro" data-key="ShiftRight" aria-label="Nitro">NITRO</button>
+  </div>
+</div>
+<script src="src/font.js"></script>
+<script src="src/audio.js"></script>
+<script src="src/input.js"></script>
+<script src="src/tracks.js"></script>
+<script src="src/track.js"></script>
+<script src="src/truck.js"></script>
+<script src="src/ai.js"></script>
+<script src="src/race.js"></script>
+<script src="src/game.js"></script>
+<script src="src/layout.js"></script>
+</body>
+</html>
