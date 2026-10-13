@@ -32,6 +32,7 @@ In one-player mode either set works. `V` switches view, `P` pauses, `M` toggles 
 - Grab nitro canisters and money bags on the track.
 - Prize money per race: $100,000 / $60,000 / $30,000 / $10,000.
 - In the speed shop, buy nitros ($10,000) and five levels each of tires, shocks, acceleration and top speed.
+- Progress is saved automatically in the browser (localStorage) after every race and every purchase. CONTINUE on the title screen picks up in the speed shop before your next race. Game over deletes the save.
 - A season is eight tracks. Each new season mirrors and/or reverses the tracks, and the CPU drivers get faster and better equipped.
 
 ## Code

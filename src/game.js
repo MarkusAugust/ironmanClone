@@ -44,6 +44,57 @@ let resultNotes = [];
 let best = null;
 try { best = JSON.parse(localStorage.getItem('irondirt.best') || 'null'); } catch (e) { best = null; }
 
+// ---------------- saved progress ----------------
+// One career is kept in localStorage. It is written after every race (results
+// applied, pointing at the next race), on entering the shop and after each
+// purchase, and removed at game over.
+const SAVE_KEY = 'irondirt.save';
+let saved = loadSave();
+let confirmNew = -1, confirmT = 0;
+
+function validCareer(c) {
+  if (!c || (c.numHumans !== 1 && c.numHumans !== 2)) return false;
+  if (!Array.isArray(c.players) || c.players.length !== c.numHumans) return false;
+  if (!Array.isArray(c.points) || c.points.length !== 4) return false;
+  if (!(c.season >= 1) || !(c.race >= 0 && c.race < TRACK_DEFS.length)) return false;
+  return c.players.every(p => p && typeof p.money === 'number' && typeof p.credits === 'number' && p.up &&
+    ['tires', 'shocks', 'accel', 'speed'].every(k => p.up[k] >= 0 && p.up[k] <= MAX_LEVEL)) &&
+    c.players.some(p => p.active);
+}
+
+function loadSave() {
+  try {
+    const d = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
+    if (d && d.v === 1 && validCareer(d.career)) return d;
+  } catch (e) { /* storage blocked or corrupt */ }
+  return null;
+}
+
+function writeSave(c) {
+  const d = { v: 1, savedAt: Date.now(), career: JSON.parse(JSON.stringify(c)) };
+  saved = d;
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify(d)); } catch (e) { /* storage blocked: keep playing */ }
+}
+
+function clearSave() {
+  saved = null;
+  try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* ignore */ }
+}
+
+// Save the career as it will be when the next race starts.
+function saveAfterRace() {
+  if (!career.players.some(p => p.active)) { clearSave(); return; }
+  const next = JSON.parse(JSON.stringify(career));
+  next.race++;
+  if (next.race >= TRACK_DEFS.length) { next.season++; next.race = 0; next.points = [0, 0, 0, 0]; }
+  writeSave(next);
+}
+
+function continueCareer() {
+  career = JSON.parse(JSON.stringify(saved.career));
+  openShop();
+}
+
 // ---------------- career ----------------
 function newCareer(numHumans) {
   return {
@@ -126,6 +177,7 @@ function finishRace(results) {
       else resultNotes.push({ text: `${who} FINISHED LAST - ${p.credits} CREDIT${p.credits === 1 ? '' : 'S'} LEFT`, col: '#ff9040' });
     }
   }
+  saveAfterRace();
   const anyWin = results.some(r => r.human && r.place === 1);
   if (anyWin) Sound.playMusic('win');
   setState('results');
@@ -143,11 +195,13 @@ function openShop() {
     t: SHOP_TIME,
     cols: career.players.map((p, i) => ({ player: i, sel: 0, done: !p.active, hold: 0, flash: 0, msg: '' })),
   };
+  writeSave(career);
   Sound.playMusic('shop');
   setState('shop');
 }
 
 function gameOver() {
+  clearSave();
   const score = { season: career.season, race: career.race + 1, races: career.racesRun,
     money: Math.max(...career.players.map(p => p.earned)) };
   if (!best || score.races > best.races || (score.races === best.races && score.money > best.money)) {
@@ -236,28 +290,60 @@ function updateTitle(dt) {
     if (Input.pressed('Enter', 'Space', 'Escape', 'ArrowLeft', 'ArrowRight') || tapped) { showHelp = false; Sound.sfx.select(); }
     return;
   }
-  if (Input.pressed('ArrowUp', 'KeyW')) { titleSel = (titleSel + 2) % 3; Sound.sfx.select(); }
-  if (Input.pressed('ArrowDown', 'KeyS')) { titleSel = (titleSel + 1) % 3; Sound.sfx.select(); }
-  let choice = -1;
-  if (Input.pressed('Digit1')) choice = 0;
-  if (Input.pressed('Digit2')) choice = 1;
-  if (Input.pressed('Enter', 'Space')) choice = titleSel;
+  const items = titleItems();
+  const n = items.length;
+  titleSel = Math.min(titleSel, n - 1);
+  if (Input.pressed('ArrowUp', 'KeyW')) { titleSel = (titleSel + n - 1) % n; Sound.sfx.select(); confirmNew = -1; }
+  if (Input.pressed('ArrowDown', 'KeyS')) { titleSel = (titleSel + 1) % n; Sound.sfx.select(); confirmNew = -1; }
+  confirmT = Math.max(0, confirmT - dt);
+  if (confirmT <= 0) confirmNew = -1;
+  let choice = null;
+  if (Input.pressed('Digit1')) choice = 'p1';
+  if (Input.pressed('Digit2')) choice = 'p2';
+  if (Input.pressed('KeyC') && saved) choice = 'continue';
+  if (Input.pressed('Enter', 'Space')) choice = items[titleSel].id;
   if (tapped && tapPos) {
-    const row = titleRowAt(tapPos.y);
-    choice = row >= 0 ? row : 0;
+    const row = titleRowAt(tapPos.y, n);
+    choice = items[row >= 0 ? row : 0].id;
   }
-  if (choice === 2) { showHelp = true; Sound.sfx.confirm(); return; }
-  if (choice === 0 || choice === 1) {
-    Sound.init();
-    Sound.sfx.confirm();
+  if (!choice) return;
+  if (choice === 'help') { showHelp = true; Sound.sfx.confirm(); return; }
+  if (choice === 'continue') {
+    Sound.init(); Sound.sfx.confirm();
     demo = null;
-    career = newCareer(choice + 1);
-    startRace();
+    continueCareer();
+    return;
   }
+  // a new game would replace the saved one: ask once
+  const humans = choice === 'p1' ? 1 : 2;
+  if (saved && confirmNew !== humans) {
+    confirmNew = humans; confirmT = 3;
+    titleSel = items.findIndex(it => it.id === choice);
+    Sound.sfx.deny();
+    return;
+  }
+  Sound.init();
+  Sound.sfx.confirm();
+  demo = null;
+  confirmNew = -1;
+  clearSave();
+  career = newCareer(humans);
+  startRace();
 }
 
-function titleRowAt(y) {
-  for (let i = 0; i < 3; i++) if (y >= 178 + i * 16 - 4 && y < 178 + i * 16 + 11) return i;
+function titleItems() {
+  const items = [];
+  if (saved) {
+    const c = saved.career;
+    items.push({ id: 'continue', label: `CONTINUE  S${c.season} RACE ${c.race + 1}` });
+  }
+  items.push({ id: 'p1', label: '1 PLAYER' }, { id: 'p2', label: '2 PLAYERS' }, { id: 'help', label: 'HOW TO PLAY' });
+  return items;
+}
+
+const TITLE_Y = 172, TITLE_STEP = 15;
+function titleRowAt(y, n) {
+  for (let i = 0; i < n; i++) if (y >= TITLE_Y + i * TITLE_STEP - 4 && y < TITLE_Y + i * TITLE_STEP + 11) return i;
   return -1;
 }
 
@@ -300,14 +386,14 @@ function updateShop(dt) {
 function shopAction(col, p) {
   const sel = col.sel;
   if (sel === 0) {
-    if (p.money >= NITRO_PRICE && p.nitros < 99) { p.money -= NITRO_PRICE; p.nitros++; Sound.sfx.buy(); col.flash = 0.2; }
+    if (p.money >= NITRO_PRICE && p.nitros < 99) { p.money -= NITRO_PRICE; p.nitros++; Sound.sfx.buy(); col.flash = 0.2; writeSave(career); }
     else { Sound.sfx.deny(); col.msg = p.nitros >= 99 ? 'NITRO FULL' : 'NOT ENOUGH CASH'; col.msgT = stateT; }
   } else if (sel <= UPGRADES.length) {
     const u = UPGRADES[sel - 1];
     const lvl = p.up[u.key];
     if (lvl >= MAX_LEVEL) { Sound.sfx.deny(); col.msg = 'MAXED OUT'; col.msgT = stateT; }
     else if (p.money < upgradePrice(lvl)) { Sound.sfx.deny(); col.msg = 'NOT ENOUGH CASH'; col.msgT = stateT; }
-    else { p.money -= upgradePrice(lvl); p.up[u.key]++; Sound.sfx.buy(); col.flash = 0.2; }
+    else { p.money -= upgradePrice(lvl); p.up[u.key]++; Sound.sfx.buy(); col.flash = 0.2; writeSave(career); }
   } else {
     col.done = true;
     Sound.sfx.confirm();
@@ -373,7 +459,7 @@ function drawLogo(cx, y, scale) {
 }
 
 function renderTitle() {
-  if (demo) demo.render(ctx, { noHud: true });
+  if (demo) demo.render(ctx, { noHud: true, noOverlay: true });
   dim(View.fp ? 0.72 : 0.55);
   ctx.fillStyle = '#0d0b10'; ctx.fillRect(0, 0, WORLD_W, 20);
   Font.draw(ctx, 'STADIUM OFF-ROAD RACING', WORLD_W / 2, 7, '#cfc8d8', { align: 'center' });
@@ -382,18 +468,24 @@ function renderTitle() {
   Font.draw(ctx, 'EIGHT TRACKS PER SEASON  -  SPEED SHOP UPGRADES', WORLD_W / 2, 130, '#a8a0b8', { align: 'center', shadow: '#000' });
 
   if (showHelp) { renderHelp(); return; }
-  const items = ['1 PLAYER', '2 PLAYERS', 'HOW TO PLAY'];
+  const items = titleItems();
   items.forEach((it, i) => {
-    const y = 178 + i * 16;
+    const y = TITLE_Y + i * TITLE_STEP;
     const sel = i === titleSel;
     if (sel) {
       ctx.fillStyle = 'rgba(255,216,74,0.16)';
-      ctx.fillRect(130, y - 4, 140, 15);
-      if (Math.floor(stateT * 4) % 2 === 0) Font.draw(ctx, '>', 138, y, '#ffd84a');
+      ctx.fillRect(110, y - 4, 180, 15);
+      if (Math.floor(stateT * 4) % 2 === 0) Font.draw(ctx, '>', 116, y, '#ffd84a');
     }
-    Font.draw(ctx, it, WORLD_W / 2, y, sel ? '#ffd84a' : '#cfc8d8', { align: 'center', shadow: '#000' });
+    const col = it.id === 'continue' ? (sel ? '#8cf07a' : '#6ac85a') : sel ? '#ffd84a' : '#cfc8d8';
+    Font.draw(ctx, it.label, WORLD_W / 2, y, col, { align: 'center', shadow: '#000' });
   });
-  if (best) Font.draw(ctx, `BEST RUN: ${best.races} RACES  ${shortMoney(best.money)}`, WORLD_W / 2, 238, '#8cf07a', { align: 'center', shadow: '#000' });
+  if (confirmNew > 0) {
+    const msg = `PRESS AGAIN TO START OVER - SAVE IS LOST`;
+    panel(ctx, 50, 146, 300, 17);
+    Font.draw(ctx, msg, WORLD_W / 2, 151, '#ff9040', { align: 'center' });
+  }
+  if (best) Font.draw(ctx, `BEST RUN: ${best.races} RACES  ${shortMoney(best.money)}`, WORLD_W / 2, 240, '#8cf07a', { align: 'center', shadow: '#000' });
   Font.draw(ctx, Input.touchMode ? 'TAP TO START' : 'ARROWS + ENTER  -  V: VIEW  -  M: SOUND ' + (Sound.muted ? 'OFF' : 'ON'), WORLD_W / 2, 262, '#7a7486', { align: 'center', shadow: '#000' });
   Font.draw(ctx, 'A FAN-MADE TRIBUTE TO THE 1989 ARCADE CLASSIC', WORLD_W / 2, 284, '#5a5466', { align: 'center' });
 }
@@ -408,7 +500,7 @@ function renderHelp() {
   line('    NITRO: RIGHT SHIFT, ENTER OR SPACE');
   line('P2  W A S D: STEER / GAS / REVERSE');
   line('    NITRO: Q OR LEFT SHIFT');
-  line('ONE PLAYER CAN USE EITHER SET.');
+  line('ONE PLAYER CAN USE EITHER SET. PROGRESS AUTOSAVES.');
   line('V: VIEW (ISO 3D / COCKPIT / 2D)  P: PAUSE  M: SOUND');
   y += 4;
   line('RULES', H);
@@ -421,10 +513,11 @@ function renderHelp() {
 
 function renderPause() {
   dim(0.6);
-  panel(ctx, 110, 110, 180, 64);
+  panel(ctx, 100, 110, 200, 68);
   Font.draw(ctx, 'PAUSED', WORLD_W / 2, 120, '#ffd84a', { align: 'center', scale: 2 });
   Font.draw(ctx, 'P OR ESC: RESUME', WORLD_W / 2, 144, '#cfc8d8', { align: 'center' });
   Font.draw(ctx, 'Q: QUIT TO TITLE', WORLD_W / 2, 156, '#cfc8d8', { align: 'center' });
+  if (saved) Font.draw(ctx, 'SAVED BEFORE THIS RACE', WORLD_W / 2, 166, '#6ac85a', { align: 'center' });
 }
 
 function fmtTime(t) {
@@ -500,6 +593,7 @@ function renderShop() {
   Font.draw(ctx, `TIME ${t}`, WORLD_W - 8, 7, t <= 5 ? '#ff5040' : '#cfc8d8', { align: 'right' });
   const nextTrack = TRACK_DEFS[career.race % TRACK_DEFS.length].name;
   Font.draw(ctx, `NEXT: ${nextTrack}`, 8, 7, '#cfc8d8');
+  Font.draw(ctx, 'SAVED', 300, 7, '#6ac85a', { align: 'right' });
 
   for (const L of shopLayout()) {
     const col = L.col, p = career.players[col.player];
