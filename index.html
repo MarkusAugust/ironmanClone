@@ -57,6 +57,15 @@
     border-radius: 3px;
     max-width: 100%;
   }
+  #viewBtn {
+    font-family: var(--font-pixel); font-size: 10px; letter-spacing: 0.04em;
+    background: var(--key); color: var(--marquee);
+    border: 2px solid var(--bezel-edge); border-bottom-width: 4px; border-radius: 6px;
+    padding: 8px 14px; cursor: pointer;
+  }
+  #viewBtn:hover { border-color: var(--marquee); }
+  #viewBtn:active { border-bottom-width: 2px; transform: translateY(2px); }
+  #viewBtn:focus-visible { outline: 2px solid var(--marquee); outline-offset: 2px; }
   #legend {
     display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 22px;
     font-size: 9px; line-height: 1.6; color: var(--dim);
@@ -93,10 +102,11 @@
 <body>
 <div id="wrap">
   <div id="bezel"><canvas id="screen" width="400" height="300" aria-label="Iron Dirt game screen"></canvas></div>
+  <button type="button" id="viewBtn" title="Switch between isometric 3D and top-down 2D (V)">VIEW: ISO 3D</button>
   <div id="legend">
     <span><b>P1</b> <kbd>&larr;</kbd><kbd>&rarr;</kbd> steer <kbd>&uarr;</kbd> gas <kbd>&darr;</kbd> reverse <kbd>R-Shift</kbd>/<kbd>Enter</kbd> nitro</span>
     <span><b>P2</b> <kbd>A</kbd><kbd>D</kbd> steer <kbd>W</kbd> gas <kbd>S</kbd> reverse <kbd>Q</kbd>/<kbd>L-Shift</kbd> nitro</span>
-    <span><kbd>P</kbd> pause <kbd>M</kbd> sound</span>
+    <span><kbd>V</kbd> view <kbd>P</kbd> pause <kbd>M</kbd> sound</span>
   </div>
 </div>
 <div id="touchpad" hidden>
@@ -112,6 +122,7 @@
 <script src="src/font.js"></script>
 <script src="src/audio.js"></script>
 <script src="src/input.js"></script>
+<script src="src/view.js"></script>
 <script src="src/tracks.js"></script>
 <script src="src/track.js"></script>
 <script src="src/truck.js"></script>

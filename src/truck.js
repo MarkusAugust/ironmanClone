@@ -28,16 +28,27 @@ const TruckSprites = (() => {
     return `rgb(${Math.min(255, col[0] * k) | 0},${Math.min(255, col[1] * k) | 0},${Math.min(255, col[2] * k) | 0})`;
   }
 
-  function render(color, angle) {
+  function render(color, angle, mode) {
+    const iso = mode === 'iso';
+    const SIZE = iso ? 36 : SPRITE_SIZE;
     const c = document.createElement('canvas');
-    c.width = SPRITE_SIZE; c.height = SPRITE_SIZE;
+    c.width = SIZE; c.height = SIZE;
     const g = c.getContext('2d');
     const ca = Math.cos(angle), sa = Math.sin(angle);
-    const ox = SPRITE_SIZE / 2, oy = SPRITE_CY;
-    const proj = (x, y, z) => {
-      const X = x * ca - y * sa, Y = x * sa + y * ca;
-      return [ox + X, oy + Y * 0.8 - z * 0.95];
-    };
+    const ox = SIZE / 2, oy = iso ? 22 : SPRITE_CY;
+    c.ox = ox; c.oy = oy;
+    const I = View.ISO, S = I.truckScale;
+    const proj = iso
+      ? (x, y, z) => {
+        const X = x * ca - y * sa, Y = x * sa + y * ca;
+        return [ox + (X - Y) * I.a * S, oy + (X + Y) * I.b * S - z * 0.78 * S];
+      }
+      : (x, y, z) => {
+        const X = x * ca - y * sa, Y = x * sa + y * ca;
+        return [ox + X, oy + Y * 0.8 - z * 0.95];
+      };
+    // which way faces the camera, in world x/y
+    const toCam = iso ? [0.7071, 0.7071] : [0, 1];
     const body = color;
     const dark = [color[0] * 0.55, color[1] * 0.55, color[2] * 0.55];
     const glass = [40, 52, 70];
@@ -53,11 +64,12 @@ const TruckSprites = (() => {
       { x0: -7, x1: -2.8, y0: 3.6, y1: 6.2, z0: 0, z1: 4.5, col: tire },
       { x0: -7, x1: -2.8, y0: -6.2, y1: -3.6, z0: 0, z1: 4.5, col: tire },
     ];
-    const L = [-0.35, -0.3, 0.88];
+    const L = iso ? [-0.25, 0.45, 0.86] : [-0.35, -0.3, 0.88];
     const light = (nx, ny, nz) => 0.42 + 0.62 * Math.max(0, nx * L[0] + ny * L[1] + nz * L[2]);
     const keyed = boxes.map(b => {
       const cx = (b.x0 + b.x1) / 2, cy = (b.y0 + b.y1) / 2;
-      return { b, key: cx * sa + cy * ca + b.z0 * 0.45 };
+      const X = cx * ca - cy * sa, Y = cx * sa + cy * ca;
+      return { b, key: X * toCam[0] + Y * toCam[1] + b.z0 * 0.45 };
     }).sort((a, b) => a.key - b.key);
 
     for (const { b } of keyed) {
@@ -69,7 +81,7 @@ const TruckSprites = (() => {
       ];
       for (const f of faces) {
         const wx = f.n[0] * ca - f.n[1] * sa, wy = f.n[0] * sa + f.n[1] * ca;
-        if (wy <= 0.02) continue;
+        if (wx * toCam[0] + wy * toCam[1] <= 0.02) continue;
         const [a, bb] = f.pts;
         const q = [proj(a[0], a[1], b.z0), proj(bb[0], bb[1], b.z0), proj(bb[0], bb[1], b.z1), proj(a[0], a[1], b.z1)];
         let col = b.side || b.col;
@@ -87,9 +99,9 @@ const TruckSprites = (() => {
     g.beginPath(); g.moveTo(s1[0], s1[1]); g.lineTo(s2[0], s2[1]); g.stroke();
 
     // crisp pixels: hard alpha, then a dark outline
-    const im = g.getImageData(0, 0, SPRITE_SIZE, SPRITE_SIZE);
+    const im = g.getImageData(0, 0, SIZE, SIZE);
     const d = im.data;
-    const solid = new Uint8Array(SPRITE_SIZE * SPRITE_SIZE);
+    const solid = new Uint8Array(SIZE * SIZE);
     for (let i = 0; i < solid.length; i++) {
       if (d[i * 4 + 3] >= 110) {
         const a = d[i * 4 + 3] / 255;
@@ -97,23 +109,24 @@ const TruckSprites = (() => {
         d[i * 4 + 3] = 255; solid[i] = 1;
       } else d[i * 4 + 3] = 0;
     }
-    for (let y = 0; y < SPRITE_SIZE; y++) for (let x = 0; x < SPRITE_SIZE; x++) {
-      const i = y * SPRITE_SIZE + x;
+    for (let y = 0; y < SIZE; y++) for (let x = 0; x < SIZE; x++) {
+      const i = y * SIZE + x;
       if (solid[i]) continue;
-      const nb = (x > 0 && solid[i - 1]) || (x < SPRITE_SIZE - 1 && solid[i + 1]) ||
-        (y > 0 && solid[i - SPRITE_SIZE]) || (y < SPRITE_SIZE - 1 && solid[i + SPRITE_SIZE]);
+      const nb = (x > 0 && solid[i - 1]) || (x < SIZE - 1 && solid[i + 1]) ||
+        (y > 0 && solid[i - SIZE]) || (y < SIZE - 1 && solid[i + SIZE]);
       if (nb) { d[i * 4] = 16; d[i * 4 + 1] = 12; d[i * 4 + 2] = 10; d[i * 4 + 3] = 255; }
     }
     g.putImageData(im, 0, 0);
     return c;
   }
 
-  function get(slot) {
-    if (!cache[slot]) {
+  function get(slot, mode = View.mode) {
+    const key = slot + mode;
+    if (!cache[key]) {
       const col = TRUCK_DEFS[slot].color;
-      cache[slot] = Array.from({ length: SPRITE_STEPS }, (_, i) => render(col, (i / SPRITE_STEPS) * Math.PI * 2));
+      cache[key] = Array.from({ length: SPRITE_STEPS }, (_, i) => render(col, (i / SPRITE_STEPS) * Math.PI * 2, mode));
     }
-    return cache[slot];
+    return cache[key];
   }
 
   let shadow = null;
@@ -138,7 +151,6 @@ class Truck {
     this.slot = slot;
     this.def = TRUCK_DEFS[slot];
     this.name = opts.name || this.def.name;
-    this.sprites = TruckSprites.get(slot);
     this.human = !!opts.human;
     this.player = opts.player == null ? -1 : opts.player;
     this.up = Object.assign({ tires: 0, shocks: 0, accel: 0, speed: 0 }, opts.up || {});
@@ -302,22 +314,23 @@ class Truck {
     const gh = track.heightAt(this.x, this.y);
     const lift = Math.max(0, this.z - gh) * 1.5;
     const sh = TruckSprites.getShadow();
-    ctx.drawImage(sh, Math.round(this.x - 10 + lift * 0.35), Math.round(this.y - 6 + 1 + lift * 0.4));
-    let a = this.h / (Math.PI * 2) * SPRITE_STEPS;
+    const [gx, gy] = View.point(this.x, this.y, gh, 0);
+    ctx.drawImage(sh, Math.round(gx - 10 + lift * 0.35), Math.round(gy - 5 + lift * 0.4));
+    const a = this.h / (Math.PI * 2) * SPRITE_STEPS;
     let fi = Math.round(a) % SPRITE_STEPS;
     if (fi < 0) fi += SPRITE_STEPS;
     const bob = (!this.air && this.speed > 20 && track.surfAt(this.x, this.y) !== SURF.DIRT) ? ((t * 20 | 0) % 2) : 0;
-    const sx = Math.round(this.x - SPRITE_SIZE / 2), sy = Math.round(this.y - SPRITE_CY - lift - bob);
+    const spr = TruckSprites.get(this.slot)[fi];
+    const [px, py] = View.point(this.x, this.y, gh, lift + bob);
     if (this.nitroT > 0) {
       const c = Math.cos(this.h), s = Math.sin(this.h);
       for (let k = 0; k < 4; k++) {
         const back = 9 + k * 2 + Math.random() * 2;
-        const fx = this.x - c * back + (Math.random() - 0.5) * 2;
-        const fy = this.y - s * back * 0.8 - 3 - lift + (Math.random() - 0.5) * 2;
+        const [fx, fy] = View.point(this.x - c * back, this.y - s * back, gh, lift + 3);
         ctx.fillStyle = k < 1 ? '#fff6c0' : k < 2 ? '#ffd040' : k < 3 ? '#ff8a20' : '#d03010';
-        ctx.fillRect(Math.round(fx), Math.round(fy), 2, 2);
+        ctx.fillRect(Math.round(fx + (Math.random() - 0.5) * 2), Math.round(fy + (Math.random() - 0.5) * 2), 2, 2);
       }
     }
-    ctx.drawImage(this.sprites[fi], sx, sy);
+    ctx.drawImage(spr, Math.round(px - spr.ox), Math.round(py - spr.oy));
   }
 }

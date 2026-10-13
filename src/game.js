@@ -179,10 +179,35 @@ function newDemo() {
   demo = new Race(track, ent, { demo: true, onEnd: () => { demo = null; } });
 }
 
+// ---------------- view switching ----------------
+let viewToastT = 0;
+function toggleView() {
+  View.toggle();
+  Sound.sfx.select();
+}
+View.onChange(mode => {
+  viewToastT = 1.4;
+  const btn = document.getElementById('viewBtn');
+  if (btn) btn.textContent = mode === 'iso' ? 'VIEW: ISO 3D' : 'VIEW: 2D';
+});
+
+function renderViewToast() {
+  if (viewToastT <= 0) return;
+  const text = View.label();
+  const w = Font.width(text) + 16;
+  ctx.fillStyle = 'rgba(10,8,14,0.85)';
+  ctx.fillRect(WORLD_W / 2 - w / 2, 24, w, 15);
+  ctx.fillStyle = '#ffd84a';
+  ctx.fillRect(WORLD_W / 2 - w / 2, 24, w, 1);
+  Font.draw(ctx, text, WORLD_W / 2, 28, '#ffd84a', { align: 'center' });
+}
+
 // ---------------- update ----------------
 function update(dt) {
   stateT += dt;
   if (Input.pressed('KeyM')) Sound.toggleMute();
+  if (Input.pressed('KeyV')) toggleView();
+  viewToastT = Math.max(0, viewToastT - dt);
 
   switch (state) {
     case 'title': updateTitle(dt); break;
@@ -322,6 +347,7 @@ function render() {
     case 'season': renderSeason(); break;
     case 'gameover': renderGameOver(); break;
   }
+  renderViewToast();
 }
 
 function dim(a) {
@@ -368,21 +394,22 @@ function renderTitle() {
     Font.draw(ctx, it, WORLD_W / 2, y, sel ? '#ffd84a' : '#cfc8d8', { align: 'center', shadow: '#000' });
   });
   if (best) Font.draw(ctx, `BEST RUN: ${best.races} RACES  ${shortMoney(best.money)}`, WORLD_W / 2, 238, '#8cf07a', { align: 'center', shadow: '#000' });
-  Font.draw(ctx, Input.touchMode ? 'TAP TO START' : 'ARROWS + ENTER  -  M: SOUND ' + (Sound.muted ? 'OFF' : 'ON'), WORLD_W / 2, 262, '#7a7486', { align: 'center', shadow: '#000' });
+  Font.draw(ctx, Input.touchMode ? 'TAP TO START' : 'ARROWS + ENTER  -  V: VIEW  -  M: SOUND ' + (Sound.muted ? 'OFF' : 'ON'), WORLD_W / 2, 262, '#7a7486', { align: 'center', shadow: '#000' });
   Font.draw(ctx, 'A FAN-MADE TRIBUTE TO THE 1989 ARCADE CLASSIC', WORLD_W / 2, 284, '#5a5466', { align: 'center' });
 }
 
 function renderHelp() {
-  panel(ctx, 20, 142, 360, 150);
+  panel(ctx, 20, 140, 360, 158);
   const L = 30, C = '#cfc8d8', H = '#ffd84a';
-  let y = 150;
+  let y = 147;
   const line = (t, col = C) => { Font.draw(ctx, t, L, y, col); y += 10; };
   line('CONTROLS', H);
   line('P1  ARROWS: STEER / GAS / REVERSE');
   line('    NITRO: RIGHT SHIFT, ENTER OR SPACE');
   line('P2  W A S D: STEER / GAS / REVERSE');
   line('    NITRO: Q OR LEFT SHIFT');
-  line('ONE PLAYER CAN USE EITHER SET.  P: PAUSE  M: SOUND');
+  line('ONE PLAYER CAN USE EITHER SET.');
+  line('P: PAUSE   M: SOUND   V: 2D / ISOMETRIC 3D VIEW');
   y += 4;
   line('RULES', H);
   line('RACE 4 LAPS AGAINST THE CPU AND IRONMAN.');
@@ -593,6 +620,11 @@ function frame(now) {
 
 function start(data) {
   setupTouch();
+  const btn = document.getElementById('viewBtn');
+  if (btn) {
+    btn.textContent = View.iso ? 'VIEW: ISO 3D' : 'VIEW: 2D';
+    btn.addEventListener('click', () => { Sound.init(); toggleView(); btn.blur(); });
+  }
   if (data && data.career) {
     career = data.career;
     openShop();

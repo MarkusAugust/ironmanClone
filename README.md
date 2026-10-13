@@ -2,6 +2,8 @@
 
 A fan-made clone of the 1989 arcade game *Ivan "Ironman" Stewart's Super Off Road*: stadium off-road racing with four trucks, single-screen dirt tracks, jumps, nitro and a speed shop between races.
 
+Two camera views: an **isometric 3D** diorama (default) and the classic **top-down 2D** view. Press `V` or the VIEW button under the screen to switch at any time, even mid-race.
+
 Plain HTML5 Canvas and JavaScript, no build step and no dependencies. All graphics are drawn in code and all sound is synthesized with the Web Audio API.
 
 ## Play
@@ -17,7 +19,7 @@ npx serve .
 | Player 1 | ← → | ↑ | ↓ | Right Shift, Enter or Space |
 | Player 2 | A D | W | S | Q or Left Shift |
 
-In one-player mode either set works. `P` pauses, `M` toggles sound. On a phone, touch buttons appear and the gas is held for you.
+In one-player mode either set works. `V` switches view, `P` pauses, `M` toggles sound. On a phone, touch buttons appear and the gas is held for you.
 
 ## Rules
 
@@ -33,8 +35,9 @@ In one-player mode either set works. `P` pauses, `M` toggles sound. On a phone, 
 | File | What it does |
 |---|---|
 | `src/tracks.js` | Track layouts: spline control points plus hills, jumps, moguls, mud and water |
-| `src/track.js` | Builds a track: wall mask, distance field for collisions, heightmap, lap index, background art |
-| `src/truck.js` | Truck sprites (pseudo-3D boxes rendered to 32 angles) and arcade physics |
+| `src/track.js` | Builds a track: wall mask, distance field for collisions, heightmap, lap index, top-down art and the isometric diorama |
+| `src/view.js` | Camera: isometric 3D or top-down 2D projection |
+| `src/truck.js` | Truck sprites (3D boxes rendered to 32 angles for each view) and arcade physics |
 | `src/ai.js` | CPU drivers |
 | `src/race.js` | A race: laps, pickups, particles, HUD |
 | `src/game.js` | Title, career, results, speed shop, seasons, game over |

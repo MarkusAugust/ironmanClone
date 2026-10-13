@@ -353,6 +353,7 @@ class Track {
       else if (d < BERM.length) V[p] = h + BERM[d];
       else V[p] = h * Math.max(0, 1 - (d - BERM.length) / 6);
     }
+    this.V = V;
     const Lx = -0.5, Ly = -0.7, Lz = 1.1, Ll = Math.hypot(Lx, Ly, Lz);
     const lx = Lx / Ll, ly = Ly / Ll, lz = Lz / Ll;
 
@@ -431,14 +432,76 @@ class Track {
 
     // tire stacks on the infield
     let placed = 0;
+    this.decor = [];
     for (let k = 0; k < 400 && placed < 16; k++) {
       const x = 8 + Math.floor(hash2(k, 1, seed) * (W - 16));
       const y = STANDS_Y + 8 + Math.floor(hash2(k, 2, seed) * (H - STANDS_Y - 14));
       if (this.dist[y * W + x] < 9) continue;
       this.drawTireStack(g, x, y);
+      this.decor.push([x, y]);
       placed++;
     }
     this.bg = c;
+  }
+
+  // Isometric diorama: every world pixel becomes a column as tall as its terrain,
+  // painted back to front so nearer columns cover farther ones.
+  getIsoBg() {
+    if (this.isoBg) return this.isoBg;
+    const W = WORLD_W, H = WORLD_H, I = View.ISO;
+    const src = this.bg.getContext('2d').getImageData(0, 0, W, H).data;
+    const c = document.createElement('canvas');
+    c.width = W; c.height = H;
+    const g = c.getContext('2d');
+    const grad = g.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0, '#1b1524'); grad.addColorStop(1, '#09070c');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, W, H);
+    // stadium floodlight glow behind the stands
+    for (const lx of [60, 200, 340]) {
+      const rg = g.createRadialGradient(lx, 18, 0, lx, 18, 60);
+      rg.addColorStop(0, 'rgba(255,240,200,0.18)'); rg.addColorStop(1, 'rgba(255,240,200,0)');
+      g.fillStyle = rg; g.fillRect(lx - 60, 0, 120, 80);
+    }
+    const img = g.getImageData(0, 0, W, H);
+    const D = new Uint32Array(img.data.buffer);
+    const pack = (r, gg, b) => (255 << 24) | ((b & 255) << 16) | ((gg & 255) << 8) | (r & 255);
+
+    // extra height for tire stacks so they stand up
+    const extra = new Float32Array(W * H);
+    for (const [dx, dy] of this.decor) {
+      for (let y = dy - 4; y <= dy + 1; y++) for (let x = dx - 2; x <= dx + 2; x++) {
+        if (x >= 0 && y >= 0 && x < W && y < H) extra[y * W + x] = 4;
+      }
+    }
+    const slabTop = pack(70, 50, 34), slabLow = pack(40, 28, 20);
+    const water = [];
+    for (let d = 0; d < W + H - 1; d++) {
+      const xa = Math.max(0, d - (H - 1)), xb = Math.min(W - 1, d);
+      for (let x = xa; x <= xb; x++) {
+        const y = d - x, p = y * W + x;
+        let h = this.V[p] + extra[p];
+        if (y < STANDS_Y) h = (STANDS_Y - y) * 0.62 + 2; // raked grandstand
+        const sx = Math.round(I.ox + (x - y) * I.a);
+        if (sx < 0 || sx >= W) continue;
+        const base = I.oy + (x + y) * I.b;
+        const top = Math.round(base - h * I.c);
+        const ground = Math.round(base);
+        const bottom = Math.round(base + I.slab);
+        const r = src[p * 4], gg = src[p * 4 + 1], b = src[p * 4 + 2];
+        const topCol = pack(r, gg, b);
+        const side = pack(r * 0.6, gg * 0.6, b * 0.6);
+        const y0 = Math.max(0, top), y1 = Math.min(H - 1, bottom);
+        for (let yy = y0; yy <= y1; yy++) {
+          D[yy * W + sx] = yy === top ? topCol : yy < ground ? side : (yy === bottom ? slabLow : slabTop);
+        }
+        if (this.surf[p] === SURF.WATER && top >= 0 && top < H) water.push(top * W + sx);
+      }
+    }
+    g.putImageData(img, 0, 0);
+    this.isoWater = water;
+    this.isoBg = c;
+    return c;
   }
 
   drawTireStack(g, x, y) {

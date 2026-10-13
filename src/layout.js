@@ -5,7 +5,8 @@
   const screen = document.getElementById('screen');
   const legend = document.getElementById('legend');
   function fit() {
-    const legendH = legend && legend.offsetParent ? legend.offsetHeight + 12 : 0;
+    const btn = document.getElementById('viewBtn');
+    const legendH = (legend && legend.offsetParent ? legend.offsetHeight + 12 : 0) + (btn ? btn.offsetHeight + 12 : 0);
     const availW = window.innerWidth - 32 - 24;
     const availH = window.innerHeight - 24 - 24 - legendH;
     let w = Math.min(availW, availH * 4 / 3);

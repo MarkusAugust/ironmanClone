@@ -69,6 +69,8 @@ class Race {
     this.bgCtx = this.bg.getContext('2d');
     this.bgCtx.drawImage(track.bg, 0, 0);
 
+    if (View.iso) this.background(); // build the diorama now, not mid-race
+
     this.pickups = [];
     this.particles = [];
     this.floaters = [];
@@ -218,7 +220,7 @@ class Race {
       const who = this.numHumans === 2 ? `P${t.player + 1} ` : '';
       this.message(`${who}FINISHED ${PLACE_NAMES[t.place - 1]}!`, t.def.hud, 2.5);
     }
-    this.floaters.push({ x: t.x, y: t.y - 16, text: PLACE_NAMES[t.place - 1], col: t.def.hud, life: 1.6 });
+    this.floaters.push({ x: t.x, y: t.y, off: 16, text: PLACE_NAMES[t.place - 1], col: t.def.hud, life: 1.6 });
   }
 
   message(text, col, life) {
@@ -275,13 +277,13 @@ class Race {
           p.taken = true;
           if (p.type === 'nitro') {
             t.nitros = Math.min(99, t.nitros + 1);
-            if (t.human) { Sound.sfx.pickup(); this.floaters.push({ x: p.x, y: p.y - 8, text: '+NITRO', col: '#ff6a5a', life: 1.2 }); }
+            if (t.human) { Sound.sfx.pickup(); this.floaters.push({ x: p.x, y: p.y, off: 8, text: '+NITRO', col: '#ff6a5a', life: 1.2 }); }
           } else if (t.human) {
             t.bagMoney += p.value;
             Sound.sfx.money();
-            this.floaters.push({ x: p.x, y: p.y - 8, text: '+' + shortMoney(p.value), col: '#8cf07a', life: 1.2 });
+            this.floaters.push({ x: p.x, y: p.y, off: 8, text: '+' + shortMoney(p.value), col: '#8cf07a', life: 1.2 });
           } else if (this.isNearHuman(t)) {
-            this.floaters.push({ x: p.x, y: p.y - 8, text: 'GRABBED!', col: t.def.hud, life: 1 });
+            this.floaters.push({ x: p.x, y: p.y, off: 8, text: 'GRABBED!', col: t.def.hud, life: 1 });
           }
         }
       }
@@ -304,9 +306,14 @@ class Race {
     const c = Math.cos(t.h), s = Math.sin(t.h);
     const a = surf === SURF.MUD ? 0.12 : Math.min(0.16, 0.012 + t.slip * 0.004);
     this.bgCtx.fillStyle = surf === SURF.MUD ? `rgba(40,24,12,${a})` : `rgba(90,56,26,${a})`;
+    if (this.isoCtx) this.isoCtx.fillStyle = this.bgCtx.fillStyle;
     for (const side of [-4, 4]) {
       const x = t.x - c * 5 - s * side, y = t.y - s * 5 + c * side;
       this.bgCtx.fillRect(x | 0, y | 0, 1, 1);
+      if (this.isoCtx) {
+        const I = View.ISO, gh = this.track.heightAt(x, y);
+        this.isoCtx.fillRect(Math.round(I.ox + (x - y) * I.a), Math.round(I.oy + (x + y) * I.b - gh * I.c), 1, 1);
+      }
     }
   }
 
@@ -348,7 +355,7 @@ class Race {
     }
     this.particles = this.particles.filter(p => p.life > 0);
     if (this.particles.length > 500) this.particles.splice(0, this.particles.length - 500);
-    for (const f of this.floaters) { f.y -= 14 * dt; f.life -= dt; }
+    for (const f of this.floaters) { f.off += 14 * dt; f.life -= dt; }
     this.floaters = this.floaters.filter(f => f.life > 0);
     for (const m of this.messages) m.life -= dt;
     this.messages = this.messages.filter(m => m.life > 0);
@@ -368,15 +375,28 @@ class Race {
   }
 
   // ---------------- drawing ----------------
+  // Background for the current view. The iso copy is made on first use so tire marks can build up on it too.
+  background() {
+    if (!View.iso) return this.bg;
+    if (!this.isoBg) {
+      this.isoBg = document.createElement('canvas');
+      this.isoBg.width = WORLD_W; this.isoBg.height = WORLD_H;
+      this.isoCtx = this.isoBg.getContext('2d');
+      this.isoCtx.drawImage(this.track.getIsoBg(), 0, 0);
+    }
+    return this.isoBg;
+  }
+
   render(ctx, opts = {}) {
     const tr = this.track;
-    ctx.drawImage(this.bg, 0, 0);
+    ctx.drawImage(this.background(), 0, 0);
     // shimmering water
-    if (tr.waterPix.length) {
+    const water = View.iso ? tr.isoWater : tr.waterPix;
+    if (water.length) {
       ctx.fillStyle = 'rgba(220,240,255,0.75)';
-      const n = Math.min(30, tr.waterPix.length / 20);
+      const n = Math.min(30, water.length / 20);
       for (let i = 0; i < n; i++) {
-        const p = tr.waterPix[(Math.random() * tr.waterPix.length) | 0];
+        const p = water[(Math.random() * water.length) | 0];
         ctx.fillRect(p % WORLD_W, (p / WORLD_W) | 0, 1, 1);
       }
     }
@@ -385,29 +405,30 @@ class Race {
       if (p.life < 2 && Math.floor(p.life * 8) % 2 === 0) continue;
       const spr = PICKUP_SPRITES[p.type];
       const bob = Math.sin(this.time * 6 + p.x) > 0 ? 1 : 0;
+      const [sx, sy] = View.point(p.x, p.y, tr.heightAt(p.x, p.y), 0);
       ctx.fillStyle = 'rgba(0,0,0,0.3)';
-      ctx.fillRect(Math.round(p.x - 3), Math.round(p.y + 2), 7, 2);
-      ctx.drawImage(spr, Math.round(p.x - spr.width / 2), Math.round(p.y - spr.height + 2 - bob));
+      ctx.fillRect(Math.round(sx - 3), Math.round(sy + 2), 7, 2);
+      ctx.drawImage(spr, Math.round(sx - spr.width / 2), Math.round(sy - spr.height + 2 - bob));
     }
     // ground particles under trucks
-    const sorted = this.trucks.slice().sort((a, b) => a.y - b.y);
+    const sorted = this.trucks.slice().sort((a, b) => View.depth(a.x, a.y) - View.depth(b.x, b.y));
     for (const p of this.particles) if (p.z < 3) this.drawParticle(ctx, p);
     for (const t of sorted) t.draw(ctx, tr, this.time);
     for (const p of this.particles) if (p.z >= 3) this.drawParticle(ctx, p);
 
     for (const f of this.floaters) {
-      Font.draw(ctx, f.text, f.x, f.y, f.col, { align: 'center', shadow: '#000' });
+      const [sx, sy] = View.point(f.x, f.y, tr.heightAt(f.x, f.y), 0);
+      Font.draw(ctx, f.text, sx, sy - f.off, f.col, { align: 'center', shadow: '#000' });
     }
     // player markers
-    if (!this.demo) {
+    if (!this.demo && !opts.noOverlay) {
       for (const t of this.trucks) if (t.human) {
         const gh = tr.heightAt(t.x, t.y);
         const lift = Math.max(0, t.z - gh) * 1.5;
-        const label = `P${t.player + 1}`;
-        if (opts.noOverlay) continue;
-        if (this.phase !== 'run' || this.raceTime < 3) Font.draw(ctx, label, t.x, t.y - 24 - lift, t.def.hud, { align: 'center', shadow: '#000' });
+        const [sx, sy] = View.point(t.x, t.y, gh, lift);
+        if (this.phase !== 'run' || this.raceTime < 3) Font.draw(ctx, `P${t.player + 1}`, sx, sy - 24, t.def.hud, { align: 'center', shadow: '#000' });
         if (t.wrongWayT > 50 && !t.finished && Math.floor(this.time * 4) % 2 === 0) {
-          Font.draw(ctx, 'WRONG WAY', t.x, t.y - 26 - lift, '#ff4040', { align: 'center', shadow: '#000' });
+          Font.draw(ctx, 'WRONG WAY', sx, sy - 26, '#ff4040', { align: 'center', shadow: '#000' });
         }
       }
     }
@@ -419,7 +440,8 @@ class Race {
     ctx.globalAlpha = p.dust ? Math.min(1, p.life * 2) * 0.8 : 1;
     ctx.fillStyle = p.col;
     const sz = p.dust ? 2 : 1;
-    ctx.fillRect(Math.round(p.x), Math.round(p.y - p.z), sz, sz);
+    const [sx, sy] = View.point(p.x, p.y, View.iso ? this.track.heightAt(p.x, p.y) : 0, p.z);
+    ctx.fillRect(Math.round(sx), Math.round(sy), sz, sz);
     ctx.globalAlpha = 1;
   }
 
