@@ -20,6 +20,7 @@ const PHYS = {
 const SPRITE_STEPS = 32;
 const SPRITE_SIZE = 30;
 const SPRITE_CY = 18; // ground center inside the sprite
+const FP_PPU = 2.4; // first-person sprite pixels per world unit
 
 const TruckSprites = (() => {
   const cache = {};
@@ -29,16 +30,24 @@ const TruckSprites = (() => {
   }
 
   function render(color, angle, mode) {
-    const iso = mode === 'iso';
-    const SIZE = iso ? 36 : SPRITE_SIZE;
+    const iso = mode === 'iso', fp = mode === 'fp';
+    const SIZE = fp ? 56 : iso ? 36 : SPRITE_SIZE;
     const c = document.createElement('canvas');
     c.width = SIZE; c.height = SIZE;
     const g = c.getContext('2d');
     const ca = Math.cos(angle), sa = Math.sin(angle);
-    const ox = SIZE / 2, oy = iso ? 22 : SPRITE_CY;
+    const ox = SIZE / 2, oy = fp ? 42 : iso ? 22 : SPRITE_CY;
     c.ox = ox; c.oy = oy;
+    c.ppu = fp ? FP_PPU : 1;
     const I = View.ISO, S = I.truckScale;
-    const proj = iso
+    // first person: camera looks along +X from slightly above
+    const EL = 0.2, cosE = Math.cos(EL), sinE = Math.sin(EL);
+    const proj = fp
+      ? (x, y, z) => {
+        const X = x * ca - y * sa, Y = x * sa + y * ca;
+        return [ox + Y * FP_PPU, oy - z * cosE * FP_PPU - X * sinE * FP_PPU];
+      }
+      : iso
       ? (x, y, z) => {
         const X = x * ca - y * sa, Y = x * sa + y * ca;
         return [ox + (X - Y) * I.a * S, oy + (X + Y) * I.b * S - z * 0.78 * S];
@@ -48,7 +57,7 @@ const TruckSprites = (() => {
         return [ox + X, oy + Y * 0.8 - z * 0.95];
       };
     // which way faces the camera, in world x/y
-    const toCam = iso ? [0.7071, 0.7071] : [0, 1];
+    const toCam = fp ? [-1, 0] : iso ? [0.7071, 0.7071] : [0, 1];
     const body = color;
     const dark = [color[0] * 0.55, color[1] * 0.55, color[2] * 0.55];
     const glass = [40, 52, 70];
@@ -59,12 +68,15 @@ const TruckSprites = (() => {
       { x0: -2.5, x1: 2.8, y0: -3.5, y1: 3.5, z0: 5, z1: 9, col: body, side: glass },
       { x0: -7.5, x1: -6.5, y0: -4, y1: 4, z0: 5, z1: 7, col: dark },
       { x0: 7, x1: 8.2, y0: -3.2, y1: 3.2, z0: 2, z1: 4, col: chrome },
+      { x0: -8.1, x1: -7.5, y0: 2.2, y1: 3.8, z0: 3.4, z1: 4.6, col: [255, 40, 30] },
+      { x0: -8.1, x1: -7.5, y0: -3.8, y1: -2.2, z0: 3.4, z1: 4.6, col: [255, 40, 30] },
+      { x0: -8.3, x1: -7.5, y0: -3.6, y1: 3.6, z0: 1.6, z1: 2.8, col: [60, 58, 64] },
       { x0: 3, x1: 7.2, y0: 3.6, y1: 6.2, z0: 0, z1: 4.5, col: tire },
       { x0: 3, x1: 7.2, y0: -6.2, y1: -3.6, z0: 0, z1: 4.5, col: tire },
       { x0: -7, x1: -2.8, y0: 3.6, y1: 6.2, z0: 0, z1: 4.5, col: tire },
       { x0: -7, x1: -2.8, y0: -6.2, y1: -3.6, z0: 0, z1: 4.5, col: tire },
     ];
-    const L = iso ? [-0.25, 0.45, 0.86] : [-0.35, -0.3, 0.88];
+    const L = fp ? [-0.6, 0.35, 0.72] : iso ? [-0.25, 0.45, 0.86] : [-0.35, -0.3, 0.88];
     const light = (nx, ny, nz) => 0.42 + 0.62 * Math.max(0, nx * L[0] + ny * L[1] + nz * L[2]);
     const keyed = boxes.map(b => {
       const cx = (b.x0 + b.x1) / 2, cy = (b.y0 + b.y1) / 2;
@@ -117,6 +129,7 @@ const TruckSprites = (() => {
       if (nb) { d[i * 4] = 16; d[i * 4 + 1] = 12; d[i * 4 + 2] = 10; d[i * 4 + 3] = 255; }
     }
     g.putImageData(im, 0, 0);
+    c.px = new Uint32Array(im.data.buffer.slice(0));
     return c;
   }
 

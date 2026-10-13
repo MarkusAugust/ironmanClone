@@ -3,10 +3,14 @@
 // coordinates; the view only decides where things land on screen.
 
 const View = (() => {
+  // V cycles through these in order
+  const MODES = ['iso', 'fp', 'top'];
+  const LABELS = { iso: 'ISOMETRIC 3D', fp: 'FIRST PERSON', top: 'TOP-DOWN 2D' };
+  const BUTTONS = { iso: 'VIEW: ISO 3D', fp: 'VIEW: COCKPIT', top: 'VIEW: 2D' };
   let mode = 'iso';
   try {
     const saved = localStorage.getItem('irondirt.view');
-    if (saved === 'top' || saved === 'iso') mode = saved;
+    if (MODES.includes(saved)) mode = saved;
   } catch (e) { /* storage blocked */ }
 
   // Isometric projection of the 400x300 world into the 400x300 screen.
@@ -34,8 +38,10 @@ const View = (() => {
     ISO, point, depth, set,
     get mode() { return mode; },
     get iso() { return mode === 'iso'; },
-    toggle() { set(mode === 'iso' ? 'top' : 'iso'); return mode; },
+    get fp() { return mode === 'fp'; },
+    toggle() { set(MODES[(MODES.indexOf(mode) + 1) % MODES.length]); return mode; },
     onChange(fn) { listeners.push(fn); },
-    label(m = mode) { return m === 'iso' ? 'ISOMETRIC 3D' : 'TOP-DOWN 2D'; },
+    label(m = mode) { return LABELS[m]; },
+    button(m = mode) { return BUTTONS[m]; },
   };
 })();

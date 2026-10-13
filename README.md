@@ -2,7 +2,11 @@
 
 A fan-made clone of the 1989 arcade game *Ivan "Ironman" Stewart's Super Off Road*: stadium off-road racing with four trucks, single-screen dirt tracks, jumps, nitro and a speed shop between races.
 
-Two camera views: an **isometric 3D** diorama (default) and the classic **top-down 2D** view. Press `V` or the VIEW button under the screen to switch at any time, even mid-race.
+Three camera views, cycled with `V` or the VIEW button under the screen, even mid-race:
+
+1. **Isometric 3D** (default): the stadium as a diorama, with berms, jumps and grandstand standing up.
+2. **First person**: from the driver's seat, with a steering wheel that turns as you steer, a speedometer and a NITRO button that lights up while the boost burns. With two players the screen splits into a top half (P1) and a bottom half (P2).
+3. **Top-down 2D**: the classic arcade view.
 
 Plain HTML5 Canvas and JavaScript, no build step and no dependencies. All graphics are drawn in code and all sound is synthesized with the Web Audio API.
 
@@ -36,7 +40,8 @@ In one-player mode either set works. `V` switches view, `P` pauses, `M` toggles 
 |---|---|
 | `src/tracks.js` | Track layouts: spline control points plus hills, jumps, moguls, mud and water |
 | `src/track.js` | Builds a track: wall mask, distance field for collisions, heightmap, lap index, top-down art and the isometric diorama |
-| `src/view.js` | Camera: isometric 3D or top-down 2D projection |
+| `src/view.js` | Camera modes: isometric 3D, first person, top-down 2D |
+| `src/cockpit.js` | First-person view: voxel heightfield renderer, truck billboards with depth test, cockpit with wheel, gauges and nitro light |
 | `src/truck.js` | Truck sprites (3D boxes rendered to 32 angles for each view) and arcade physics |
 | `src/ai.js` | CPU drivers |
 | `src/race.js` | A race: laps, pickups, particles, HUD |

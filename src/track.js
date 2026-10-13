@@ -444,6 +444,21 @@ class Track {
     this.bg = c;
   }
 
+  // Heights as drawn by the 3D views: terrain and berms, standing tire stacks, raked grandstand.
+  getViewHeights() {
+    if (this.viewH) return this.viewH;
+    const W = WORLD_W, H = WORLD_H;
+    const VH = Float32Array.from(this.V);
+    for (const [dx, dy] of this.decor) {
+      for (let y = dy - 4; y <= dy + 1; y++) for (let x = dx - 2; x <= dx + 2; x++) {
+        if (x >= 0 && y >= 0 && x < W && y < H) VH[y * W + x] += 4;
+      }
+    }
+    for (let y = 0; y < STANDS_Y; y++) for (let x = 0; x < W; x++) VH[y * W + x] = (STANDS_Y - y) * 0.62 + 2;
+    this.viewH = VH;
+    return VH;
+  }
+
   // Isometric diorama: every world pixel becomes a column as tall as its terrain,
   // painted back to front so nearer columns cover farther ones.
   getIsoBg() {
@@ -467,21 +482,14 @@ class Track {
     const D = new Uint32Array(img.data.buffer);
     const pack = (r, gg, b) => (255 << 24) | ((b & 255) << 16) | ((gg & 255) << 8) | (r & 255);
 
-    // extra height for tire stacks so they stand up
-    const extra = new Float32Array(W * H);
-    for (const [dx, dy] of this.decor) {
-      for (let y = dy - 4; y <= dy + 1; y++) for (let x = dx - 2; x <= dx + 2; x++) {
-        if (x >= 0 && y >= 0 && x < W && y < H) extra[y * W + x] = 4;
-      }
-    }
+    const VH = this.getViewHeights();
     const slabTop = pack(70, 50, 34), slabLow = pack(40, 28, 20);
     const water = [];
     for (let d = 0; d < W + H - 1; d++) {
       const xa = Math.max(0, d - (H - 1)), xb = Math.min(W - 1, d);
       for (let x = xa; x <= xb; x++) {
         const y = d - x, p = y * W + x;
-        let h = this.V[p] + extra[p];
-        if (y < STANDS_Y) h = (STANDS_Y - y) * 0.62 + 2; // raked grandstand
+        const h = VH[p];
         const sx = Math.round(I.ox + (x - y) * I.a);
         if (sx < 0 || sx >= W) continue;
         const base = I.oy + (x + y) * I.b;

@@ -188,7 +188,7 @@ function toggleView() {
 View.onChange(mode => {
   viewToastT = 1.4;
   const btn = document.getElementById('viewBtn');
-  if (btn) btn.textContent = mode === 'iso' ? 'VIEW: ISO 3D' : 'VIEW: 2D';
+  if (btn) btn.textContent = View.button(mode);
 });
 
 function renderViewToast() {
@@ -374,7 +374,7 @@ function drawLogo(cx, y, scale) {
 
 function renderTitle() {
   if (demo) demo.render(ctx, { noHud: true });
-  dim(0.55);
+  dim(View.fp ? 0.72 : 0.55);
   ctx.fillStyle = '#0d0b10'; ctx.fillRect(0, 0, WORLD_W, 20);
   Font.draw(ctx, 'STADIUM OFF-ROAD RACING', WORLD_W / 2, 7, '#cfc8d8', { align: 'center' });
   drawLogo(WORLD_W / 2, 52, 7);
@@ -409,7 +409,7 @@ function renderHelp() {
   line('P2  W A S D: STEER / GAS / REVERSE');
   line('    NITRO: Q OR LEFT SHIFT');
   line('ONE PLAYER CAN USE EITHER SET.');
-  line('P: PAUSE   M: SOUND   V: 2D / ISOMETRIC 3D VIEW');
+  line('V: VIEW (ISO 3D / COCKPIT / 2D)  P: PAUSE  M: SOUND');
   y += 4;
   line('RULES', H);
   line('RACE 4 LAPS AGAINST THE CPU AND IRONMAN.');
@@ -622,7 +622,7 @@ function start(data) {
   setupTouch();
   const btn = document.getElementById('viewBtn');
   if (btn) {
-    btn.textContent = View.iso ? 'VIEW: ISO 3D' : 'VIEW: 2D';
+    btn.textContent = View.button();
     btn.addEventListener('click', () => { Sound.init(); toggleView(); btn.blur(); });
   }
   if (data && data.career) {

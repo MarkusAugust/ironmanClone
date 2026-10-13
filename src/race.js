@@ -70,6 +70,7 @@ class Race {
     this.bgCtx.drawImage(track.bg, 0, 0);
 
     if (View.iso) this.background(); // build the diorama now, not mid-race
+    if (View.fp) Cockpit.terrain(this);
 
     this.pickups = [];
     this.particles = [];
@@ -153,6 +154,7 @@ class Race {
       else ctl = t.ai.control(dt, t, track, this.time);
       if (this.phase === 'over' && t.finished) { ctl.nitro = false; ctl.gas = t.forward < 40 && ctl.gas; }
       t.lastGas = ctl.gas;
+      t.lastSteer = ctl.steer;
       t.update(dt, ctl, track);
       this.handleEvents(t);
       this.tireMarks(t);
@@ -325,6 +327,13 @@ class Race {
       this.spawnT = 3 + Math.random() * 4;
     }
     for (const p of this.pickups) p.life -= dt;
+    // cockpit: wheel follows steering, camera pitches with vertical motion
+    for (const t of this.trucks) {
+      const k = Math.min(1, dt * 10);
+      t.wheel = (t.wheel || 0) + ((t.lastSteer || 0) * 1.7 - (t.wheel || 0)) * k;
+      const pitch = Math.max(-28, Math.min(28, t.vz * 0.35));
+      t.camPitch = (t.camPitch || 0) + (pitch - (t.camPitch || 0)) * Math.min(1, dt * 6);
+    }
     // dust and spray
     for (const t of this.trucks) {
       if (t.air) continue;
@@ -389,6 +398,13 @@ class Race {
 
   render(ctx, opts = {}) {
     const tr = this.track;
+    if (View.fp) {
+      ctx.fillStyle = '#0d0b10'; ctx.fillRect(0, 0, WORLD_W, WORLD_H);
+      Cockpit.render(ctx, this, opts.noHud ? 0 : 20);
+      if (!opts.noHud) this.drawHud(ctx);
+      if (!opts.noOverlay) this.drawOverlays(ctx);
+      return;
+    }
     ctx.drawImage(this.background(), 0, 0);
     // shimmering water
     const water = View.iso ? tr.isoWater : tr.waterPix;
