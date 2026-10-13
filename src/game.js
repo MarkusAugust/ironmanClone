@@ -378,7 +378,7 @@ function renderTitle() {
   ctx.fillStyle = '#0d0b10'; ctx.fillRect(0, 0, WORLD_W, 20);
   Font.draw(ctx, 'STADIUM OFF-ROAD RACING', WORLD_W / 2, 7, '#cfc8d8', { align: 'center' });
   drawLogo(WORLD_W / 2, 52, 7);
-  Font.draw(ctx, 'FOUR TRUCKS. FOUR LAPS. ONE IRONMAN.', WORLD_W / 2, 116, '#ffffff', { align: 'center', shadow: '#000' });
+  Font.draw(ctx, 'FOUR TRUCKS. FOUR LAPS. ONE TITAN.', WORLD_W / 2, 116, '#ffffff', { align: 'center', shadow: '#000' });
   Font.draw(ctx, 'EIGHT TRACKS PER SEASON  -  SPEED SHOP UPGRADES', WORLD_W / 2, 130, '#a8a0b8', { align: 'center', shadow: '#000' });
 
   if (showHelp) { renderHelp(); return; }
@@ -412,7 +412,7 @@ function renderHelp() {
   line('V: VIEW (ISO 3D / COCKPIT / 2D)  P: PAUSE  M: SOUND');
   y += 4;
   line('RULES', H);
-  line('RACE 4 LAPS AGAINST THE CPU AND IRONMAN.');
+  line('RACE 4 LAPS AGAINST THE CPU AND THE TITAN.');
   line('FINISH LAST AND YOU LOSE ONE OF 3 CREDITS.');
   line('GRAB NITROS AND MONEY BAGS ON THE TRACK.');
   line('SPEND PRIZE MONEY ON UPGRADES IN THE SHOP.');
@@ -480,8 +480,8 @@ function renderResults() {
   }
   y += 6;
   for (const n of resultNotes) { Font.draw(ctx, n.text, WORLD_W / 2, y, n.col, { align: 'center' }); y += 12; }
-  const ironWon = lastResults[0].slot === 3;
-  if (ironWon && !resultNotes.length) Font.draw(ctx, 'IRONMAN TAKES IT. UPGRADE AND GET HIM NEXT TIME!', WORLD_W / 2, y, '#c8cad4', { align: 'center' });
+  const bossWon = lastResults[0].slot === 3;
+  if (bossWon && !resultNotes.length) Font.draw(ctx, 'TITAN TAKES IT. UPGRADE AND BEAT IT NEXT TIME!', WORLD_W / 2, y, '#c8cad4', { align: 'center' });
   if (stateT > 1 && Math.floor(stateT * 2) % 2 === 0) {
     const next = career.players.some(p => p.active) ? 'PRESS ENTER FOR THE SPEED SHOP' : 'PRESS ENTER';
     Font.draw(ctx, next, WORLD_W / 2, 280, '#8cf07a', { align: 'center' });
@@ -559,7 +559,7 @@ function renderSeason() {
     Font.draw(ctx, `${career.points[slot]} PTS`, 290, y, '#cfc8d8', { align: 'right' });
   });
   const humanChamp = career.players[order[0]] && order[0] < 2;
-  Font.draw(ctx, humanChamp ? 'YOU BEAT IRONMAN FOR THE TITLE!' : 'THE TRACKS GET MIRRORED AND THE CPU GETS FASTER.',
+  Font.draw(ctx, humanChamp ? 'YOU BEAT THE TITAN FOR THE TITLE!' : 'THE TRACKS GET MIRRORED AND THE CPU GETS FASTER.',
     WORLD_W / 2, 210, humanChamp ? '#8cf07a' : '#ffd84a', { align: 'center' });
   Font.draw(ctx, `SEASON ${career.season + 1} STARTS NOW. POINTS RESET.`, WORLD_W / 2, 224, '#cfc8d8', { align: 'center' });
   if (stateT > 1.5 && Math.floor(stateT * 2) % 2 === 0) Font.draw(ctx, 'PRESS ENTER', WORLD_W / 2, 260, '#8cf07a', { align: 'center' });

@@ -5,7 +5,7 @@ const TRUCK_DEFS = [
   { name: 'RED', color: [218, 44, 40], hud: '#ff5a4a' },
   { name: 'BLUE', color: [40, 96, 226], hud: '#5c8dff' },
   { name: 'YELLOW', color: [238, 192, 30], hud: '#ffd84a' },
-  { name: 'IRONMAN', color: [150, 152, 164], hud: '#c8cad4' },
+  { name: 'TITAN', color: [150, 152, 164], hud: '#c8cad4' },
 ];
 
 const PHYS = {

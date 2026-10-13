@@ -1,6 +1,6 @@
 # Iron Dirt
 
-A fan-made clone of the 1989 arcade game *Ivan "Ironman" Stewart's Super Off Road*: stadium off-road racing with four trucks, single-screen dirt tracks, jumps, nitro and a speed shop between races.
+A fan-made tribute to the stadium off-road arcade racers of the late 1980s: stadium off-road racing with four trucks, single-screen dirt tracks, jumps, nitro and a speed shop between races.
 
 Three camera views, cycled with `V` or the VIEW button under the screen, even mid-race:
 
@@ -27,7 +27,7 @@ In one-player mode either set works. `V` switches view, `P` pauses, `M` toggles 
 
 ## Rules
 
-- Four trucks race four laps: red (P1), blue (P2 or CPU), yellow (CPU) and the grey **Ironman** (the boss CPU).
+- Four trucks race four laps: red (P1), blue (P2 or CPU), yellow (CPU) and the grey **Titan** (the boss CPU).
 - Finishing last costs one of your three credits. Lose all three and it's game over.
 - Grab nitro canisters and money bags on the track.
 - Prize money per race: $100,000 / $60,000 / $30,000 / $10,000.
