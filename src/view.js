@@ -15,7 +15,9 @@ const View = (() => {
 
   // Isometric projection of the 400x300 world into the 400x300 screen.
   // a: horizontal scale, b: depth scale, c: height scale, slab: diorama thickness.
-  const ISO = { a: 0.62, b: 0.364, c: 1.0, ox: 169, oy: 40, slab: 6, truckScale: 1.45 };
+  // Sized so every track (all variants, berms included) fits the 400x280 play area.
+  // Track width relative to a truck is 1 / truckScale of the top-down proportion.
+  const ISO = { a: 0.68, b: 0.41, c: 1.0, ox: 175, oy: 18, slab: 6, truckScale: 1.2 };
   const listeners = [];
 
   function set(m) {

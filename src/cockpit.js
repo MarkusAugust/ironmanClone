@@ -4,10 +4,10 @@
 // with a turning steering wheel, gauges and a nitro button that lights up.
 
 const Cockpit = (() => {
-  const HS = 1.6;        // height exaggeration so berms and jumps read as walls and ramps
-  const EYE = 7.5;       // driver eye height above the truck's ground point
+  const HS = 1.2;        // height exaggeration: berms stay below eye level, jumps still read as ramps
+  const EYE = 9;         // driver eye height above the truck's ground point
   const FAR = 470;
-  const FOV = 76 * Math.PI / 180;
+  const FOV = 84 * Math.PI / 180;
   const WALL_H = 34;     // stadium wall around the world edge
   const TAN = Math.tan(FOV / 2);
 
@@ -84,7 +84,7 @@ const Cockpit = (() => {
     return {
       x: t.x + c * 2, y: t.y + s * 2, eye: gh * HS + EYE,
       fx: c, fy: s, rx: -s, ry: c, focal, cx: w / 2,
-      horizon: Math.round(h * 0.4 + (t.camPitch || 0) * h / 280),
+      horizon: Math.round(h * 0.38 + (t.camPitch || 0) * h / 280),
       w, h, heading: t.h,
     };
   }
@@ -315,12 +315,12 @@ const Cockpit = (() => {
     ctx.save();
     ctx.translate(X, Y);
     ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.clip();
-    const dashY = Math.round(H * 0.7);
+    const dashY = Math.round(H * 0.72);
     // hood seen through the windshield
-    poly(ctx, [[W * 0.1, dashY + 2], [W * 0.27, H * 0.61], [W * 0.73, H * 0.61], [W * 0.9, dashY + 2]], shade(col, 0.95));
-    poly(ctx, [[W * 0.27, H * 0.61], [W * 0.73, H * 0.61], [W * 0.75, H * 0.625], [W * 0.25, H * 0.625]], shade(col, 1.25));
+    poly(ctx, [[W * 0.1, dashY + 2], [W * 0.29, H * 0.655], [W * 0.71, H * 0.655], [W * 0.9, dashY + 2]], shade(col, 0.95));
+    poly(ctx, [[W * 0.29, H * 0.655], [W * 0.71, H * 0.655], [W * 0.73, H * 0.668], [W * 0.27, H * 0.668]], shade(col, 1.25));
     ctx.fillStyle = 'rgba(255,255,255,0.75)';
-    ctx.fillRect(Math.round(W * 0.5 - 2 * k), Math.round(H * 0.62), Math.max(2, Math.round(4 * k)), dashY - Math.round(H * 0.62));
+    ctx.fillRect(Math.round(W * 0.5 - 2 * k), Math.round(H * 0.665), Math.max(2, Math.round(4 * k)), dashY - Math.round(H * 0.665));
     // roof and A-pillars
     ctx.fillStyle = '#15111a'; ctx.fillRect(0, 0, W, Math.round(H * 0.06));
     poly(ctx, [[0, 0], [W * 0.1, 0], [W * 0.035, dashY], [0, dashY]], '#1d1822');
