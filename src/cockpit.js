@@ -59,8 +59,59 @@ const Cockpit = (() => {
       }
       race.fpColors = new Uint32Array(d.buffer);
       race.fpColorsT = race.time;
+      race.fpColorsUp = null;
     }
     return { h: tr.fpHeights, c: race.fpColors };
+  }
+
+  // On a bridge road the deck is solid ground in the heightfield.
+  function terrainUpper(race) {
+    const tr = race.track, base = terrain(race);
+    if (!tr.fpHeightsUp) {
+      const h = Float32Array.from(tr.fpHeights);
+      for (const c of tr.crossings) for (const [p, e] of tr.deckWorld(c)) h[p] = e.h * HS;
+      tr.fpHeightsUp = h;
+    }
+    if (!race.fpColorsUp) {
+      const col = Uint32Array.from(base.c), L = Mood.lightMap(tr);
+      for (const c of tr.crossings) for (const [p, e] of tr.deckWorld(c)) {
+        col[p] = pack(Math.min(255, e.col[0] * L[p * 3]), Math.min(255, e.col[1] * L[p * 3 + 1]), Math.min(255, e.col[2] * L[p * 3 + 2]));
+      }
+      race.fpColorsUp = col;
+    }
+    return { h: tr.fpHeightsUp, c: race.fpColorsUp };
+  }
+
+  // Seen from the road below (or from afar), the deck is a ceiling: cast rays
+  // above the horizon onto the plane of its underside.
+  function drawDeckUndersides(v, cam, race) {
+    const tr = race.track;
+    if (!tr.crossings.length) return;
+    const W = cam.w, top = Math.min(cam.h, cam.horizon);
+    for (const c of tr.crossings) {
+      const D = tr.deckInfo(c);
+      const under = (c.BH - 2.5) * HS;
+      if (under <= cam.eye) continue;
+      const L = Mood.lightAt(tr, c.x, c.y);
+      for (let y = 0; y < top; y++) {
+        const z = (under - cam.eye) * cam.focal / (cam.horizon - y + 0.5);
+        if (z > FAR || z < 1) continue;
+        const f = Math.min(0.75, Math.pow(z / FAR, 1.4) * 0.9);
+        for (let i = 0; i < W; i++) {
+          const t = (i + 0.5 - cam.cx) / cam.focal;
+          const px = cam.x + (cam.fx + cam.rx * t) * z, py = cam.y + (cam.fy + cam.ry * t) * z;
+          if (px < 0 || py < 0 || px >= WORLD_W || py >= WORLD_H) continue;
+          if (!D.maskW[(py | 0) * WORLD_W + (px | 0)]) continue;
+          const di = y * W + i;
+          if (v.depth[di] <= z) continue;
+          // steel beams across the underside
+          const beam = Math.floor((D.srF[((py * RES) | 0) * WORLD_W * RES + ((px * RES) | 0)] + 200) / 4) % 2 === 0;
+          const k = beam ? 0.7 : 1;
+          v.buf[di] = fogMix(pack(84 * k * L[0], 74 * k * L[1], 64 * k * L[2]), f);
+          v.depth[di] = z;
+        }
+      }
+    }
   }
 
   function fogMix(c, f) {
@@ -272,6 +323,14 @@ const Cockpit = (() => {
         rect(v, cam, ph, 16, 9, LAMP2); rect(v, cam, Object.assign({}, ph, { sy: ph.sy - 2 * cam.focal / ph.fwd }), 13, 5, LAMP);
       } else rect(v, cam, ph, 16, 9, pack(90, 92, 100));
     }
+    // bridge pillars
+    for (const c of tr.crossings) {
+      const L = Mood.lightAt(tr, c.x, c.y);
+      for (const [px, py] of tr.deckInfo(c).pillars) {
+        const p = project(cam, px, py, tr.groundAt(px, py) * HS);
+        if (p) rect(v, cam, p, 3, (c.BH - 2.5) * HS, pack(150 * L[0], 150 * L[1], 158 * L[2]));
+      }
+    }
     // start/finish gantry and the flagman
     for (const [gx, gy] of tr.gantry) {
       const pb = project(cam, gx, gy, tr.heightAt(gx, gy) * HS);
@@ -300,7 +359,7 @@ const Cockpit = (() => {
     // trucks
     for (const t of race.trucks) {
       if (t === self) continue;
-      const gh = tr.heightAt(t.x, t.y);
+      const gh = tr.heightAt(t.x, t.y, t.idx);
       const lift = Math.max(0, t.z - gh) * 1.5;
       const p = project(cam, t.x, t.y, (gh + lift) * HS);
       if (!p || p.fwd > FAR) continue;
@@ -317,7 +376,7 @@ const Cockpit = (() => {
     // particles
     for (const pt of race.particles) {
       if (pt.k === 'ring') continue;
-      const gh = tr.heightAt(pt.x, pt.y);
+      const gh = pt.base != null ? pt.base : tr.heightAt(pt.x, pt.y);
       const p = project(cam, pt.x, pt.y, gh * HS + pt.z);
       if (!p || p.fwd > 200 || p.fwd < 6) continue;
       const f = pt.age / pt.life;
@@ -481,7 +540,10 @@ const Cockpit = (() => {
     MOOD = Mood.of(race.track); FOG = MOOD.fog; TIME = race.time;
     const v = viewBuf(W, H);
     const cam = camera(t, W, H);
-    drawTerrain(v, cam, terrain(race));
+    const onBridge = tr => { const c = tr.upperCrossing(t.idx); return c && Math.abs(tr.sRel(c, t.idx, t.x, t.y)) < c.D + c.ramp; };
+    const up = race.track.crossings.length && onBridge(race.track);
+    drawTerrain(v, cam, up ? terrainUpper(race) : terrain(race));
+    if (!up) drawDeckUndersides(v, cam, race);
     drawObjects(v, cam, race, t);
     v.g.putImageData(v.img, 0, 0);
     // the cab leans with the body roll, so the horizon tilts in corners

@@ -16,7 +16,8 @@ const TRACK_DEFS = [
   },
   {
     name: 'CROSSROADS',
-    // figure eight with a flat crossing: watch for traffic from the side
+    // figure eight: the first pass crosses on a bridge
+    bridge: 'a',
     pts: [[310, 268], [356, 262], [376, 224], [374, 106], [344, 58], [290, 56], [252, 90], [148, 226], [110, 262],
       [56, 260], [28, 222], [28, 104], [58, 58], [110, 56], [148, 90], [252, 226], [275, 256]],
     features: [
@@ -54,12 +55,12 @@ const TRACK_DEFS = [
   },
   {
     name: 'MUD EIGHT',
-    // figure eight with a mud pool right in the crossing
+    // figure eight: the second pass bridges over a mud pool
+    bridge: 'b',
     pts: [[96, 268], [60, 264], [30, 226], [30, 110], [62, 62], [122, 60], [168, 100], [262, 240], [300, 268],
       [352, 264], [378, 228], [376, 120], [346, 62], [296, 60], [262, 100], [168, 240], [128, 268]],
     features: [
       { t: 'mud', at: 6.5, len: 70, d0: -1, d1: 1 },
-      { t: 'mud', at: 14.5, len: 70, d0: -1, d1: 1 },
       { t: 'water', at: 2.5, len: 60, d0: -1, d1: 1 },
       { t: 'jump', at: 9.5, len: 50, h: 13 },
       { t: 'hill', at: 11.5, len: 80, h: 10 },
@@ -81,11 +82,12 @@ const TRACK_DEFS = [
   },
   {
     name: 'LEAPFROG',
-    // figure eight where the first pass jumps over the crossing
+    // figure eight with a chicane; the first pass hops over the bridge
+    bridge: 'a',
     pts: [[310, 268], [356, 262], [378, 226], [348, 168], [376, 112], [344, 58], [288, 54], [246, 90], [154, 230],
       [112, 264], [56, 262], [28, 224], [28, 104], [58, 58], [112, 54], [154, 90], [246, 230], [275, 258]],
     features: [
-      { t: 'jump', at: 7.24, len: 56, h: 18 },
+      { t: 'jump', at: 0.55, len: 50, h: 13 },
       { t: 'moguls', at: 3.5, len: 60, h: 3, n: 3 },
       { t: 'water', at: 10.5, len: 50, d0: -1, d1: 1 },
       { t: 'mud', at: 12.5, len: 60, d0: -1, d1: 1 },

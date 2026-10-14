@@ -61,6 +61,8 @@ class Track {
     }
     this.pts = pts;
 
+    // which pass of a figure eight is the bridge (reversing the track swaps the passes)
+    this.upperPass = ((def.bridge || 'a') === 'a') !== !!(variant & 2) ? 'a' : 'b';
     this.buildCenterline();
     this.findCrossings();
     this.features = features.map(f => {
@@ -287,8 +289,47 @@ class Track {
         else if (d < near.d) Object.assign(near, { i, j, d });
       }
     }
-    const R = Math.round(64 / this.sp);
-    this.crossings = found.map(c => ({ a: c.i, b: c.j, r: R, x: this.cx[c.i], y: this.cy[c.i] }));
+    // every crossing is a bridge: the upper road ramps up, crosses on a deck and ramps down
+    this.crossings = found.map(f => {
+      const up = this.upperPass === 'a' ? f.i : f.j, lo = this.upperPass === 'a' ? f.j : f.i;
+      const sin = Math.abs(this.tx[up] * this.ty[lo] - this.ty[up] * this.tx[lo]);
+      const D = (this.halfW + 4) / Math.max(0.35, sin) + 3;   // half length of the deck
+      const ramp = 46, BH = 13;
+      const r = Math.max(Math.round(64 / this.sp), Math.ceil((D + ramp + 14) / this.sp));
+      return { a: f.i, b: f.j, up, lo, r, D, ramp, BH, sin, x: this.cx[f.i], y: this.cy[f.i] };
+    });
+  }
+
+  // signed distance along the upper road from the middle of the bridge
+  sRel(c, idx, x, y) {
+    const s = idx * this.sp + (x - this.cx[idx]) * this.tx[idx] + (y - this.cy[idx]) * this.ty[idx];
+    let d = s - c.up * this.sp;
+    if (d > this.L / 2) d -= this.L;
+    if (d < -this.L / 2) d += this.L;
+    return d;
+  }
+
+  bridgeProfile(c, sr) {
+    const a = Math.abs(sr);
+    if (a <= c.D) return c.BH;
+    if (a >= c.D + c.ramp) return 0;
+    const t = 1 - (a - c.D) / c.ramp;
+    return c.BH * t * t * (3 - 2 * t);
+  }
+
+  // the crossing whose upper road a truck on sample idx is driving, if any
+  upperCrossing(idx) {
+    if (idx == null || idx < 0) return null;
+    for (const c of this.crossings) if (this.inStretch(idx, c.up, c.r)) return c;
+    return null;
+  }
+
+  // ramp height baked into the visual terrain (the deck itself is drawn separately)
+  rampAt(i, x, y) {
+    const c = this.upperCrossing(i);
+    if (!c) return 0;
+    const sr = this.sRel(c, i, x, y);
+    return Math.abs(sr) > c.D ? this.bridgeProfile(c, sr) : 0;
   }
 
   inStretch(idx, center, r) {
@@ -381,7 +422,15 @@ class Track {
   surfAt(x, y) { return this.inside(x, y) ? this.surf[this.pix(x, y)] : 0; }
   idxAt(x, y) { return this.inside(x, y) ? this.idx[this.pix(x, y)] : -1; }
   latAt(x, y) { return this.inside(x, y) ? this.lat[this.pix(x, y)] : 0; }
-  heightAt(x, y) {
+  // Ground height; with a truck's sample idx, a truck on a bridge road gets the bridge height.
+  heightAt(x, y, idx) {
+    if (idx != null && this.crossings.length) {
+      const c = this.upperCrossing(idx);
+      if (c) return this.groundAt(x, y) + this.bridgeProfile(c, this.sRel(c, idx, x, y));
+    }
+    return this.groundAt(x, y);
+  }
+  groundAt(x, y) {
     x -= 0.5; y -= 0.5;
     const x0 = Math.max(0, Math.min(WORLD_W - 2, Math.floor(x)));
     const y0 = Math.max(0, Math.min(WORLD_H - 2, Math.floor(y)));
@@ -434,11 +483,11 @@ class Track {
     return g >= 0 ? g : hint;
   }
 
-  gradAt(x, y) {
+  gradAt(x, y, idx) {
     const e = 1.5;
     return [
-      (this.heightAt(x + e, y) - this.heightAt(x - e, y)) / (2 * e),
-      (this.heightAt(x, y + e) - this.heightAt(x, y - e)) / (2 * e),
+      (this.heightAt(x + e, y, idx) - this.heightAt(x - e, y, idx)) / (2 * e),
+      (this.heightAt(x, y + e, idx) - this.heightAt(x, y - e, idx)) / (2 * e),
     ];
   }
 
@@ -466,6 +515,10 @@ class Track {
       if (d === 0) V[p] = h;
       else if (d < BERM.length) V[p] = h + BERM[d];
       else V[p] = h * Math.max(0, 1 - (d - BERM.length) / 6);
+      if (this.crossings.length && this.near[p] >= 0 && d < BERM.length) {
+        const x = p % W, y = (p - x) / W;
+        V[p] += this.rampAt(this.near[p], x + 0.5, y + 0.5);
+      }
     }
     this.V = V;
 
@@ -490,7 +543,7 @@ class Track {
         const d = ox * -this.ty[i] + oy * this.tx[i];
         const a = i * this.sp + ox * this.tx[i] + oy * this.ty[i];
         latF[f] = d; alongF[f] = a;
-        const h = this.heightAt(wx, wy);
+        const h = this.groundAt(wx, wy) + (this.crossings.length ? this.rampAt(i, wx, wy) : 0);
         const ad = Math.abs(d);
         if (dc === 0 && (ad < this.halfW || interior(cx, cy))) {
           const sf = this.featureSurface(a, d, wx, wy);

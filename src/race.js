@@ -302,6 +302,7 @@ class Race {
       const lat = (Math.random() * 2 - 1) * (tr.halfW - 8);
       const x = tr.cx[i] - tr.ty[i] * lat, y = tr.cy[i] + tr.tx[i] * lat;
       if (tr.surfAt(x, y) !== SURF.DIRT) continue;
+      if (tr.crossings.some(c => tr.inStretch(i, c.up, c.r) || tr.inStretch(i, c.lo, c.r))) continue;
       if (this.trucks.some(t => Math.hypot(t.x - x, t.y - y) < 30)) continue;
       const money = Math.random() < 0.38;
       const value = money ? [10000, 20000, 20000, 30000, 50000][Math.floor(Math.random() * 5)] : 1;
@@ -314,7 +315,7 @@ class Race {
     for (const p of this.pickups) {
       for (const t of this.trucks) {
         if (p.taken) break;
-        const gh = this.track.heightAt(t.x, t.y);
+        const gh = this.track.heightAt(t.x, t.y, t.idx);
         if (t.z - gh > 6) continue;
         if (Math.hypot(t.x - p.x, t.y - p.y) < 9) {
           p.taken = true;
@@ -351,6 +352,7 @@ class Race {
 
   tireMarks(t) {
     if (t.air || t.speed < 8) return;
+    if (this.track.upperCrossing(t.idx) && t.z - this.track.groundAt(t.x, t.y) > 2) return; // up on a ramp or deck
     const surf = this.track.surfAt(t.x, t.y);
     if (surf === SURF.WATER) return;
     const c = Math.cos(t.h), s = Math.sin(t.h);
@@ -461,7 +463,8 @@ class Race {
     FX.draw(ctx, this, true);
     const sun = Mood.of(tr).sun;
     const sorted = this.trucks.slice().sort((a, b) => View.depth(a.x, a.y) - View.depth(b.x, b.y));
-    for (const t of sorted) t.draw(ctx, tr, this.time, sun);
+    if (tr.crossings.length) this.drawWithBridges(ctx, sorted, sun);
+    else for (const t of sorted) t.draw(ctx, tr, this.time, sun);
     FX.draw(ctx, this, false);
     Stadium.drawGantry(ctx, this);
     // light: multiply the mood over the world, then add headlights at night
@@ -479,7 +482,7 @@ class Race {
     // player markers
     if (!this.demo && !opts.noOverlay) {
       for (const t of this.trucks) if (t.human) {
-        const gh = tr.heightAt(t.x, t.y);
+        const gh = tr.heightAt(t.x, t.y, t.idx);
         const lift = Math.max(0, t.z - gh) * 1.5;
         const [sx, sy] = View.point(t.x, t.y, gh, lift);
         if (this.phase !== 'run' || this.raceTime < 3) Font.draw(ctx, `P${t.player + 1}`, sx, sy - 24, t.def.hud, { align: 'center', shadow: '#000' });
@@ -492,6 +495,23 @@ class Race {
     Stadium.drawConfetti(ctx, this);
     if (!opts.noHud) this.drawHud(ctx);
     if (!opts.noOverlay) this.drawOverlays(ctx);
+  }
+
+  // Trucks under a bridge are drawn before its deck, trucks on it after.
+  // In the isometric view a truck clearly in front of the bridge is drawn after it too.
+  drawWithBridges(ctx, sorted, sun) {
+    const tr = this.track, iso = View.iso;
+    const parts = tr.crossings.map(c => iso ? tr.deckIso(c) : tr.deckTop(c));
+    for (const p of parts) ctx.drawImage(p.shadow, 0, 0, WORLD_W, WORLD_H);
+    const before = [], after = [];
+    for (const t of sorted) {
+      const upper = tr.upperCrossing(t.idx);
+      const front = iso && tr.crossings.some(c => t.x + t.y > c.x + c.y + (c.D + tr.halfW) * 1.2);
+      (upper || front ? after : before).push(t);
+    }
+    for (const t of before) t.draw(ctx, tr, this.time, sun);
+    for (const p of parts) ctx.drawImage(p.deck, 0, 0, WORLD_W, WORLD_H);
+    for (const t of after) t.draw(ctx, tr, this.time, sun);
   }
 
   drawHud(ctx) {

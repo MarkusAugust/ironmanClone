@@ -107,7 +107,7 @@ const Mood = (() => {
     ctx.globalCompositeOperation = 'lighter';
     for (const t of race.trucks) {
       const c = Math.cos(t.h), s = Math.sin(t.h);
-      const gh = race.track.heightAt(t.x, t.y);
+      const gh = race.track.heightAt(t.x, t.y, t.idx);
       const P = (f, l) => View.point(t.x + c * f - s * l, t.y + s * f + c * l, gh, 0);
       const o = P(8, 0), a = P(46, -15), b = P(46, 15);
       const grad = ctx.createRadialGradient(o[0], o[1], 2, o[0], o[1], Math.hypot(a[0] - o[0], a[1] - o[1]));

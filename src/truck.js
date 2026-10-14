@@ -230,7 +230,7 @@ const TruckSprites = (() => {
 
   // Footprint shadow cast along the sun direction.
   function drawShadow(ctx, t, track, sun) {
-    const gh = track.heightAt(t.x, t.y);
+    const gh = track.heightAt(t.x, t.y, t.idx);
     const lift = Math.max(0, t.z - gh) * 1.5;
     const c = Math.cos(t.h), s = Math.sin(t.h);
     const off = 4 + lift;
@@ -283,8 +283,8 @@ class Truck {
 
   placeAt(p, track) {
     this.x = p.x; this.y = p.y; this.h = p.h;
-    this.z = track.heightAt(p.x, p.y);
     this.idx = p.idx;
+    this.z = track.heightAt(p.x, p.y, p.idx);
   }
 
   useNitro() {
@@ -325,7 +325,7 @@ class Truck {
         f -= Math.sign(f) * Math.min(Math.abs(f), PHYS.coast * dt);
       }
       if (f > top) f = top + (f - top) * Math.exp(-2.2 * dt);
-      const [gx, gy] = track.gradAt(this.x, this.y);
+      const [gx, gy] = track.gradAt(this.x, this.y, this.idx);
       f -= PHYS.slopeG * (gx * c + gy * s) * dt;
       // moguls and slopes kick the truck a bit sideways
       l -= PHYS.slopeG * 0.3 * (-gx * s + gy * c) * dt;
@@ -371,7 +371,7 @@ class Truck {
   }
 
   updateHeight(dt, track) {
-    const gh = track.heightAt(this.x, this.y);
+    const gh = track.heightAt(this.x, this.y, this.idx);
     if (this.air) {
       this.airTime += dt;
       this.vz -= PHYS.gravity * dt;
@@ -434,7 +434,7 @@ class Truck {
   }
 
   draw(ctx, track, t, sun) {
-    const gh = track.heightAt(this.x, this.y);
+    const gh = track.heightAt(this.x, this.y, this.idx);
     const lift = Math.max(0, this.z - gh) * 1.5;
     TruckSprites.drawShadow(ctx, this, track, sun || [0.5, 0.6]);
     const a = this.h / (Math.PI * 2) * SPRITE_STEPS;

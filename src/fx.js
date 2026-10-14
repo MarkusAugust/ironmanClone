@@ -13,9 +13,14 @@ const FX = (() => {
   }
   const rnd = (a, b) => a + Math.random() * (b - a);
 
+  // ground height under the truck that spawns particles (bridge decks are above the terrain)
+  let spawnBase = null;
+  function from(race, t) { spawnBase = race.track.heightAt(t.x, t.y, t.idx); }
+
   function add(race, p) {
     if (race.particles.length >= MAX) race.particles.shift();
     p.age = 0;
+    p.base = spawnBase;
     p.rgb = rgb(p.col);
     race.particles.push(p);
   }
@@ -45,6 +50,7 @@ const FX = (() => {
 
   // ---- events from the trucks ----
   function nitroStart(race, t) {
+    from(race, t);
     const c = Math.cos(t.h), s = Math.sin(t.h);
     for (let i = 0; i < 10; i++) flame(race, t.x - c * 9, t.y - s * 9, 4, -c * rnd(40, 90) + rnd(-15, 15), -s * rnd(40, 90) + rnd(-15, 15));
     for (let i = 0; i < 4; i++) puff(race, t.x - c * 10, t.y - s * 10, 4, '#d0d0d8', 2, 7, 0.8, -c * 20, -s * 20, 8, 0.5);
@@ -52,6 +58,7 @@ const FX = (() => {
   }
 
   function wallHit(race, t, power) {
+    from(race, t);
     const n = Math.min(14, 4 + power / 10);
     for (let i = 0; i < n; i++) spark(race, t.x, t.y, 4, rnd(-50, 50), rnd(-50, 50), rnd(20, 60));
     for (let i = 0; i < 4; i++) chunk(race, t.x, t.y, 3, '#a88458', rnd(-30, 30), rnd(-30, 30), rnd(30, 60), 0.6, false);
@@ -60,6 +67,7 @@ const FX = (() => {
   }
 
   function landing(race, t, impact) {
+    from(race, t);
     const surf = race.track.surfAt(t.x, t.y);
     const col = surf === SURF.MUD ? '#6a4628' : surf === SURF.WATER ? '#cfe6ff' : '#dcc49a';
     const n = Math.min(14, 6 + impact / 15);
@@ -76,6 +84,7 @@ const FX = (() => {
   function emit(race, dt) {
     const tr = race.track;
     for (const t of race.trucks) {
+      from(race, t);
       const c = Math.cos(t.h), s = Math.sin(t.h);
       // nitro flame and smoke trail
       if (t.nitroT > 0) {
@@ -123,7 +132,7 @@ const FX = (() => {
       if (p.z < 0) {
         p.z = 0;
         if (p.k === 'chunk') {
-          if (p.stain && !p.stained) {
+          if (p.stain && !p.stained && !(p.base > 2)) {
             p.stained = true;
             race.stain(p.x, p.y, p.col);
           }
@@ -143,7 +152,7 @@ const FX = (() => {
       const isLow = p.z < 3 && p.k !== 'flame';
       if (isLow !== low) continue;
       const f = p.age / p.life;
-      const [sx, sy] = View.point(p.x, p.y, View.iso ? tr.heightAt(p.x, p.y) : 0, p.z);
+      const [sx, sy] = View.point(p.x, p.y, View.iso ? (p.base != null ? p.base : tr.heightAt(p.x, p.y)) : 0, p.z);
       if (p.k === 'puff') {
         const r = p.r0 + (p.r1 - p.r0) * Math.sqrt(f);
         ctx.globalAlpha = p.a0 * (1 - f);

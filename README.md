@@ -35,7 +35,7 @@ In one-player mode either set works. `V` switches view, `P` pauses, `M` toggles 
 
 - Choose EASY, NORMAL or HARD on the title screen: it sets CPU strength, starting money and credits (5 / 3 / 2).
 - On the gas through a corner the rear steps out into a power slide; better tires tame it. Trucks lean in corners and have some yaw inertia.
-- CROSSROADS, MUD EIGHT and LEAPFROG are figure eights. Each road keeps its own walls through the crossing, so you can collide with crossing traffic but not turn onto the other road. On LEAPFROG the first pass jumps over the crossing.
+- CROSSROADS, MUD EIGHT and LEAPFROG are figure eights where one road climbs a ramp and crosses the other on a bridge (plank deck, railings, pillars, shadow), and the other road runs underneath. There are no level crossings: trucks on the bridge and under it never meet.
 - Four trucks race four laps: red (P1), blue (P2 or CPU), yellow (CPU) and the grey **Titan** (the boss CPU).
 - Finishing last costs one of your three credits. Lose all three and it's game over.
 - Grab nitro canisters and money bags on the track.
@@ -49,6 +49,7 @@ In one-player mode either set works. `V` switches view, `P` pauses, `M` toggles 
 | File | What it does |
 |---|---|
 | `src/tracks.js` | Track layouts: spline control points plus hills, jumps, moguls, mud and water |
+| `src/bridge.js` | Bridge decks over figure-eight crossings: deck, railings, pillars and shadow for each view |
 | `src/track.js` | Builds a track: wall mask, distance field for collisions, heightmap, lap index, top-down art and the isometric diorama |
 | `src/view.js` | Camera modes: isometric 3D, first person, top-down 2D |
 | `src/cockpit.js` | First-person view: voxel heightfield renderer, truck billboards with depth test, cockpit with wheel, gauges and nitro light |
