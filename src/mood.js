@@ -72,19 +72,26 @@ const Mood = (() => {
     const pack = (r, gg, b) => (255 << 24) | ((Math.min(255, b * 255) & 255) << 16) | ((Math.min(255, gg * 255) & 255) << 8) | (Math.min(255, r * 255) & 255);
     D.fill(pack(m.tint[0], m.tint[1], m.tint[2]));
     if (mode === 'iso') {
-      const I = View.ISO, VH = track.getViewHeights();
-      for (let d = 0; d < W + H - 1; d++) {
-        const xa = Math.max(0, d - (H - 1)), xb = Math.min(W - 1, d);
-        for (let x = xa; x <= xb; x++) {
-          const y = d - x, p = y * W + x;
-          const sx = Math.round(I.ox + (x - y) * I.a);
-          if (sx < 0 || sx >= W) continue;
-          const base = I.oy + (x + y) * I.b;
-          const top = Math.round(base - VH[p] * I.c), bottom = Math.round(base + I.slab);
+      const I = View.ISO, R = RES, FW = W * R, FH = H * R, VH = track.getViewHeightsFine();
+      c.width = FW; c.height = FH;
+      const img2 = g.createImageData(FW, FH);
+      const D2 = new Uint32Array(img2.data.buffer);
+      D2.fill(pack(m.tint[0], m.tint[1], m.tint[2]));
+      for (let d = 0; d < FW + FH - 1; d++) {
+        const xa = Math.max(0, d - (FH - 1)), xb = Math.min(FW - 1, d);
+        for (let X = xa; X <= xb; X++) {
+          const Y = d - X, f = Y * FW + X, p = ((Y / R) | 0) * W + ((X / R) | 0);
+          const sx = Math.round(I.ox * R + (X - Y) * I.a);
+          if (sx < 0 || sx >= FW) continue;
+          const base = I.oy * R + (X + Y) * I.b;
+          const top = Math.round(base - VH[f] * I.c * R), bottom = Math.round(base + I.slab * R);
           const col = pack(L[p * 3], L[p * 3 + 1], L[p * 3 + 2]);
-          for (let yy = Math.max(0, top); yy <= Math.min(H - 1, bottom); yy++) D[yy * W + sx] = col;
+          for (let yy = Math.max(0, top); yy <= Math.min(FH - 1, bottom); yy++) D2[yy * FW + sx] = col;
         }
       }
+      g.putImageData(img2, 0, 0);
+      track.overlays[mode] = c;
+      return c;
     } else {
       for (let p = 0; p < W * H; p++) D[p] = pack(L[p * 3], L[p * 3 + 1], L[p * 3 + 2]);
     }

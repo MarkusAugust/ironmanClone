@@ -136,6 +136,29 @@ const Sound = (() => {
     };
   }
 
+  // ---- Tire skid: filtered noise that rises with the slide ----
+  function createSkid(pan = 0) {
+    if (!ac) return { set() {}, stop() {} };
+    const src = ac.createBufferSource();
+    src.buffer = noiseBuf; src.loop = true;
+    const f = ac.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 2.5; f.frequency.value = 900;
+    const g = ac.createGain(); g.gain.value = 0;
+    let out = g;
+    if (ac.createStereoPanner) { const p = ac.createStereoPanner(); p.pan.value = pan; g.connect(p); out = p; }
+    src.connect(f); f.connect(g); out.connect(sfxBus);
+    src.start();
+    let stopped = false;
+    return {
+      set(level, pitch = 1) {
+        if (stopped) return;
+        const t = ac.currentTime;
+        g.gain.setTargetAtTime(Math.min(0.09, level * 0.09), t, 0.04);
+        f.frequency.setTargetAtTime(700 + 900 * pitch, t, 0.05);
+      },
+      stop() { if (stopped) return; stopped = true; g.gain.setTargetAtTime(0, ac.currentTime, 0.03); src.stop(ac.currentTime + 0.2); },
+    };
+  }
+
   // ---- Music ----
   const NOTE = { C: 0, 'C#': 1, D: 2, 'D#': 3, E: 4, F: 5, 'F#': 6, G: 7, 'G#': 8, A: 9, 'A#': 10, B: 11 };
   function midi(n) {
@@ -251,7 +274,7 @@ const Sound = (() => {
   }
 
   return {
-    init, sfx, createEngine,
+    init, sfx, createEngine, createSkid,
     playMusic, stopMusic,
     get muted() { return muted; },
     toggleMute() { setMuted(!muted); return muted; },

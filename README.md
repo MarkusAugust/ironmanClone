@@ -10,6 +10,8 @@ Three camera views, cycled with `V` or the VIEW button under the screen, even mi
 
 Each track has its own light: daytime sun, sunset, or night under floodlights with headlights on. The stadium is alive with a jumping crowd, a flagman who signals the start, final lap and finish, and a start/finish gantry. Trucks kick up dust, sling mud that stains the track, spray water, spit nitro flames and throw sparks off the walls; hard landings shake the screen (off when your system asks for reduced motion).
 
+The game logic runs in a 400x300 world; the canvas is 800x600 and the track, trucks, effects and stadium are drawn at that double resolution. The cockpit view renders its terrain at half resolution and draws the dashboard sharp.
+
 Plain HTML5 Canvas and JavaScript, no build step and no dependencies. All graphics are drawn in code and all sound is synthesized with the Web Audio API.
 
 ## Play
@@ -31,6 +33,9 @@ In one-player mode either set works. `V` switches view, `P` pauses, `M` toggles 
 
 ## Rules
 
+- Choose EASY, NORMAL or HARD on the title screen: it sets CPU strength, starting money and credits (5 / 3 / 2).
+- On the gas through a corner the rear steps out into a power slide; better tires tame it. Trucks lean in corners and have some yaw inertia.
+- CROSSROADS, MUD EIGHT and LEAPFROG are figure eights. Each road keeps its own walls through the crossing, so you can collide with crossing traffic but not turn onto the other road. On LEAPFROG the first pass jumps over the crossing.
 - Four trucks race four laps: red (P1), blue (P2 or CPU), yellow (CPU) and the grey **Titan** (the boss CPU).
 - Finishing last costs one of your three credits. Lose all three and it's game over.
 - Grab nitro canisters and money bags on the track.

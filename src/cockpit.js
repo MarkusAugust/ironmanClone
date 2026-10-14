@@ -46,7 +46,11 @@ const Cockpit = (() => {
       tr.fpHeights = Float32Array.from(VH, v => v * HS);
     }
     if (!race.fpColors || race.time - race.fpColorsT > 1) {
-      const d = race.bgCtx.getImageData(0, 0, WORLD_W, WORLD_H).data;
+      if (!race.fpSmall) { race.fpSmall = document.createElement('canvas'); race.fpSmall.width = WORLD_W; race.fpSmall.height = WORLD_H; }
+      const sg = race.fpSmall.getContext('2d');
+      sg.imageSmoothingEnabled = true;
+      sg.drawImage(race.bg, 0, 0, WORLD_W, WORLD_H);
+      const d = sg.getImageData(0, 0, WORLD_W, WORLD_H).data;
       const L = Mood.lightMap(tr);
       for (let p = 0, n = WORLD_W * WORLD_H; p < n; p++) {
         d[p * 4] = Math.min(255, d[p * 4] * L[p * 3]);
@@ -283,7 +287,7 @@ const Cockpit = (() => {
     if (tr.flagman) {
       const fm = tr.flagman, spr = Stadium.flagmanSprite(race);
       const p = project(cam, fm.x, fm.y, tr.heightAt(fm.x, fm.y) * HS);
-      if (p) blit(v, cam, spr, spr.px, spr.width, spr.height, spr.ox, spr.oy, 1.7, p, Mood.lightAt(tr, fm.x, fm.y));
+      if (p) blit(v, cam, spr, spr.px, spr.width, spr.height, spr.ox, spr.oy, 1.7 * spr.res, p, Mood.lightAt(tr, fm.x, fm.y));
     }
     // pickups
     for (const pk of race.pickups) {
@@ -291,7 +295,7 @@ const Cockpit = (() => {
       const spr = PICKUP_SPRITES[pk.type];
       const gh = tr.heightAt(pk.x, pk.y) * HS;
       const p = project(cam, pk.x, pk.y, gh + Math.sin(race.time * 6 + pk.x) * 0.6);
-      if (p) blit(v, cam, spr, pixelsOf(spr), spr.width, spr.height, spr.width / 2, spr.height, 1.3, p, Mood.lightAt(tr, pk.x, pk.y));
+      if (p) blit(v, cam, spr, pixelsOf(spr), spr.width, spr.height, spr.width / 2, spr.height, 1.3 * spr.res, p, Mood.lightAt(tr, pk.x, pk.y));
     }
     // trucks
     for (const t of race.trucks) {
@@ -333,10 +337,11 @@ const Cockpit = (() => {
   let wheelImg = null;
   function wheel() {
     if (wheelImg) return wheelImg;
-    const S = 128, c = document.createElement('canvas');
+    const S = 256, c = document.createElement('canvas');
     c.width = S; c.height = S;
     const g = c.getContext('2d');
-    const cx = S / 2;
+    g.scale(2, 2);
+    const cx = 64;
     g.lineCap = 'round';
     // spokes
     g.strokeStyle = '#3a3640'; g.lineWidth = 11;
@@ -479,7 +484,15 @@ const Cockpit = (() => {
     drawTerrain(v, cam, terrain(race));
     drawObjects(v, cam, race, t);
     v.g.putImageData(v.img, 0, 0);
-    ctx.drawImage(v.canvas, X, Y);
+    // the cab leans with the body roll, so the horizon tilts in corners
+    const tilt = -(t.roll || 0) * 0.06;
+    ctx.save();
+    ctx.beginPath(); ctx.rect(X, Y, W, H); ctx.clip();
+    ctx.translate(X + W / 2, Y + H / 2);
+    ctx.rotate(tilt);
+    const z = 1 + Math.abs(tilt) * 0.9;
+    ctx.drawImage(v.canvas, -W / 2 * z, -H / 2 * z, W * z, H * z);
+    ctx.restore();
     if (MOOD.lamps) {
       // own headlights on the road ahead
       ctx.save();

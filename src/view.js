@@ -2,6 +2,9 @@
 // Camera: top-down 2D or isometric 3D. Physics always runs in flat world
 // coordinates; the view only decides where things land on screen.
 
+// Pixels per world unit on screen: the game thinks in 400x300, the canvas is 800x600.
+const RES = 2;
+
 const View = (() => {
   // V cycles through these in order
   const MODES = ['iso', 'fp', 'top'];

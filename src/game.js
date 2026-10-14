@@ -19,7 +19,7 @@ const SHOP_TIME = 30;
 
 const canvas = document.getElementById('screen');
 const ctx = canvas.getContext('2d');
-canvas.width = WORLD_W; canvas.height = WORLD_H;
+canvas.width = WORLD_W * RES; canvas.height = WORLD_H * RES;
 ctx.imageSmoothingEnabled = false;
 
 const trackCache = new Map();
@@ -96,33 +96,49 @@ function continueCareer() {
 }
 
 // ---------------- career ----------------
-function newCareer(numHumans) {
+// Difficulty: how strong the CPU starts, and what you start with.
+const DIFFICULTIES = {
+  easy: { label: 'EASY', money: 80000, credits: 5, aiShift: -3, aiSkill: -0.08, aiTop: -0.04 },
+  normal: { label: 'NORMAL', money: START_MONEY, credits: START_CREDITS, aiShift: 0, aiSkill: 0, aiTop: 0 },
+  hard: { label: 'HARD', money: 20000, credits: 2, aiShift: 4, aiSkill: 0.05, aiTop: 0.03 },
+};
+const DIFF_ORDER = ['easy', 'normal', 'hard'];
+let difficulty = 'normal';
+try { const d = localStorage.getItem('irondirt.difficulty'); if (DIFFICULTIES[d]) difficulty = d; } catch (e) { /* ignore */ }
+function setDifficulty(d) {
+  difficulty = d;
+  try { localStorage.setItem('irondirt.difficulty', d); } catch (e) { /* ignore */ }
+}
+function diffOf(c) { return DIFFICULTIES[c && c.difficulty] || DIFFICULTIES.normal; }
+
+function newCareer(numHumans, diff = difficulty) {
+  const D = DIFFICULTIES[diff] || DIFFICULTIES.normal;
   return {
-    numHumans, season: 1, race: 0, racesRun: 0,
+    numHumans, season: 1, race: 0, racesRun: 0, difficulty: diff,
     points: [0, 0, 0, 0],
     players: Array.from({ length: numHumans }, () => ({
-      active: true, credits: START_CREDITS, money: START_MONEY, nitros: START_NITROS,
+      active: true, credits: D.credits, money: D.money, nitros: START_NITROS,
       up: { tires: 0, shocks: 0, accel: 0, speed: 0 }, earned: 0, wins: 0,
     })),
   };
 }
 
-function aiLevel() { return (career.season - 1) * TRACK_DEFS.length + career.race; }
+function aiLevel() { return Math.max(0, (career.season - 1) * TRACK_DEFS.length + career.race + diffOf(career).aiShift); }
 
 function droneEntrant(slot, lvl) {
   const u = Math.min(MAX_LEVEL, Math.floor(lvl / 3));
   return {
-    slot, human: false, skill: Math.min(0.92, 0.55 + lvl * 0.025),
+    slot, human: false, skill: Math.max(0.4, Math.min(0.95, 0.55 + lvl * 0.025 + diffOf(career).aiSkill)),
     up: { tires: u, shocks: u, accel: u, speed: u },
-    nitros: 1 + Math.floor(lvl / 4), topMul: 0.95,
+    nitros: 1 + Math.floor(lvl / 4), topMul: 0.95 + diffOf(career).aiTop,
   };
 }
 function bossEntrant(lvl) {
   const u = Math.min(MAX_LEVEL, 1 + Math.floor(lvl / 2));
   return {
-    slot: 3, human: false, boss: true, skill: Math.min(1, 0.86 + lvl * 0.015),
+    slot: 3, human: false, boss: true, skill: Math.max(0.6, Math.min(1, 0.86 + lvl * 0.015 + diffOf(career).aiSkill)),
     up: { tires: u, shocks: u, accel: u, speed: u },
-    nitros: 2 + Math.floor(lvl / 3), topMul: 1.04 + Math.min(0.06, lvl * 0.004),
+    nitros: 2 + Math.floor(lvl / 3), topMul: 1.04 + Math.min(0.06, lvl * 0.004) + diffOf(career).aiTop,
   };
 }
 
@@ -146,7 +162,7 @@ function startRace() {
   const humans = career.players.filter(p => p.active).length;
   race = new Race(track, entrants(), {
     numHumans: career.numHumans === 2 && humans === 2 ? 2 : 1,
-    season: career.season, raceNo: career.race + 1,
+    season: career.season, raceNo: career.race + 1, diffLabel: diffOf(career).label,
     moneyOf: t => career.players[t.player].money,
     onEnd: finishRace,
   });
@@ -307,6 +323,13 @@ function updateTitle(dt) {
     const row = titleRowAt(tapPos.y, n);
     choice = items[row >= 0 ? row : 0].id;
   }
+  // left/right on the difficulty row changes it; Enter cycles
+  if (items[titleSel].id === 'diff') {
+    const k = DIFF_ORDER.indexOf(difficulty);
+    if (Input.pressed('ArrowLeft', 'KeyA')) { setDifficulty(DIFF_ORDER[Math.max(0, k - 1)]); Sound.sfx.select(); }
+    if (Input.pressed('ArrowRight', 'KeyD')) { setDifficulty(DIFF_ORDER[Math.min(2, k + 1)]); Sound.sfx.select(); }
+  }
+  if (choice === 'diff') { setDifficulty(DIFF_ORDER[(DIFF_ORDER.indexOf(difficulty) + 1) % 3]); Sound.sfx.select(); return; }
   if (!choice) return;
   if (choice === 'help') { showHelp = true; Sound.sfx.confirm(); return; }
   if (choice === 'continue') {
@@ -336,13 +359,14 @@ function titleItems() {
   const items = [];
   if (saved) {
     const c = saved.career;
-    items.push({ id: 'continue', label: `CONTINUE  S${c.season} RACE ${c.race + 1}` });
+    items.push({ id: 'continue', label: `CONTINUE  S${c.season} RACE ${c.race + 1} ${diffOf(c).label}` });
   }
-  items.push({ id: 'p1', label: '1 PLAYER' }, { id: 'p2', label: '2 PLAYERS' }, { id: 'help', label: 'HOW TO PLAY' });
+  items.push({ id: 'p1', label: '1 PLAYER' }, { id: 'p2', label: '2 PLAYERS' },
+    { id: 'diff', label: `DIFFICULTY < ${DIFFICULTIES[difficulty].label} >` }, { id: 'help', label: 'HOW TO PLAY' });
   return items;
 }
 
-const TITLE_Y = 172, TITLE_STEP = 15;
+const TITLE_Y = 168, TITLE_STEP = 14;
 function titleRowAt(y, n) {
   for (let i = 0; i < n; i++) if (y >= TITLE_Y + i * TITLE_STEP - 4 && y < TITLE_Y + i * TITLE_STEP + 11) return i;
   return -1;
@@ -422,6 +446,8 @@ function shopTap(pos) {
 
 // ---------------- render ----------------
 function render() {
+  // all drawing uses 400x300 game coordinates; detailed art is drawn at RES x
+  ctx.setTransform(RES, 0, 0, RES, 0, 0);
   ctx.imageSmoothingEnabled = false;
   switch (state) {
     case 'title': renderTitle(); break;
@@ -514,10 +540,10 @@ function renderTitle() {
   });
   if (confirmNew > 0) {
     const msg = `PRESS AGAIN TO START OVER - SAVE IS LOST`;
-    panel(ctx, 50, 146, 300, 17);
-    Font.draw(ctx, msg, WORLD_W / 2, 151, '#ff9040', { align: 'center' });
+    panel(ctx, 50, 140, 300, 17);
+    Font.draw(ctx, msg, WORLD_W / 2, 145, '#ff9040', { align: 'center' });
   }
-  if (best) Font.draw(ctx, `BEST RUN: ${best.races} RACES  ${shortMoney(best.money)}`, WORLD_W / 2, 240, '#8cf07a', { align: 'center', shadow: '#000' });
+  if (best) Font.draw(ctx, `BEST RUN: ${best.races} RACES  ${shortMoney(best.money)}`, WORLD_W / 2, 246, '#8cf07a', { align: 'center', shadow: '#000' });
   Font.draw(ctx, Input.touchMode ? 'TAP TO START' : 'ARROWS + ENTER  -  V: VIEW  -  M: SOUND ' + (Sound.muted ? 'OFF' : 'ON'), WORLD_W / 2, 262, '#7a7486', { align: 'center', shadow: '#000' });
   Font.draw(ctx, 'A FAN-MADE TRIBUTE TO THE 1989 ARCADE CLASSIC', WORLD_W / 2, 284, '#5a5466', { align: 'center' });
 }
@@ -540,7 +566,7 @@ function renderHelp() {
   line('FINISH LAST AND YOU LOSE ONE OF 3 CREDITS.');
   line('GRAB NITROS AND MONEY BAGS ON THE TRACK.');
   line('SPEND PRIZE MONEY ON UPGRADES IN THE SHOP.');
-  line('JUMPS LAUNCH YOU. SHOCKS SOFTEN LANDINGS.');
+  line('GAS IN A TURN = POWER SLIDE. TIRES TAME IT.');
 }
 
 function renderPause() {
@@ -699,10 +725,11 @@ function drawShopPreview(p, slot) {
   ctx.beginPath(); ctx.ellipse(cx, cy + 4, 36, 12, 0, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = '#3a3346';
   ctx.beginPath(); ctx.ellipse(cx, cy + 2, 36, 12, 0, 0, Math.PI * 2); ctx.fill();
-  const frames = TruckSprites.get(slot, 'iso', Math.floor(stateT * 6) % 2 + 2);
+  const frames = TruckSprites.get(slot, 'iso', Math.floor(stateT * 6) % 2 + 8);
   const spr = frames[Math.floor(stateT * 5) % SPRITE_STEPS];
   ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(spr, Math.round(cx - spr.ox * 2), Math.round(cy - spr.oy * 2), spr.width * 2, spr.height * 2);
+  const zoom = 2 / spr.res;
+  ctx.drawImage(spr, Math.round(cx - spr.ox * zoom), Math.round(cy - spr.oy * zoom), spr.width * zoom, spr.height * zoom);
   Font.draw(ctx, 'YOUR RIDE', cx, 120, '#cfc8d8', { align: 'center' });
   const top = Math.round((PHYS.baseTop + PHYS.topPer * p.up.speed) * 0.9);
   const acc = Math.round((PHYS.baseAcc + PHYS.accPer * p.up.accel) / 10);

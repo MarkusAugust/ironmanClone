@@ -32,7 +32,7 @@ const TruckSprites = (() => {
 
   // Stadium pickup in local units: x forward, y to the right, z up.
   // Parts marked body ride on the suspension; wheels stay on the ground.
-  function model(color, bob) {
+  function model(color, bob, roll = 0) {
     const body = color;
     const dark = color.map(v => v * 0.5);
     const light = color.map(v => Math.min(255, v * 1.25 + 30));
@@ -44,7 +44,11 @@ const TruckSprites = (() => {
     const cage = [60, 60, 68];
     const parts = [];
     const B = (x0, x1, y0, y1, z0, z1, col, opts = {}) => parts.push(Object.assign({ x0, x1, y0, y1, z0, z1, col }, opts));
-    const bodyB = (x0, x1, y0, y1, z0, z1, col, opts = {}) => B(x0, x1, y0, y1, z0 + bob, z1 + bob, col, opts);
+    // body parts ride on the suspension and lean with the roll (outer side down)
+    const bodyB = (x0, x1, y0, y1, z0, z1, col, opts = {}) => {
+      const lean = roll * (y0 + y1) / 2 * 0.17;
+      B(x0, x1, y0, y1, z0 + bob + lean, z1 + bob + lean, col, opts);
+    };
     // wheels with tread
     for (const [x0, x1] of [[3.0, 7.4], [-7.4, -3.0]]) {
       B(x0, x1, 3.7, 6.6, 0, 4.8, tire, { tire: true, side: 1 });
@@ -101,30 +105,32 @@ const TruckSprites = (() => {
 
   function render(color, angle, mode, variant) {
     const iso = mode === 'iso', fp = mode === 'fp';
-    const SIZE = fp ? 60 : iso ? 38 : 32;
+    const K = fp ? 1 : RES; // 2D and isometric sprites carry RES x detail
+    const SIZE = (fp ? 60 : iso ? 38 : 32) * K;
     const c = document.createElement('canvas');
     c.width = SIZE; c.height = SIZE;
     const g = c.getContext('2d');
     const ca = Math.cos(angle), sa = Math.sin(angle);
-    const ox = SIZE / 2, oy = fp ? 46 : iso ? 24 : 20;
-    c.ox = ox; c.oy = oy;
+    const ox = SIZE / 2, oy = (fp ? 46 : iso ? 24 : 20) * K;
+    c.ox = ox; c.oy = oy; c.res = K;
     c.ppu = fp ? FP_PPU : 1;
     const I = View.ISO, S = I.truckScale;
     const phase = variant % 2;
-    const bob = [-0.7, 0, 0.8][Math.floor(variant / 2)];
+    const bob = [-0.7, 0, 0.8][Math.floor(variant / 2) % 3];
+    const roll = [-1, 0, 1][Math.floor(variant / 6)] ;
     // first person: camera looks along +X from slightly above
     const EL = 0.2, cosE = Math.cos(EL), sinE = Math.sin(EL);
     const rot = (x, y) => [x * ca - y * sa, x * sa + y * ca];
     const proj = fp
       ? (x, y, z) => { const [X, Y] = rot(x, y); return [ox + Y * FP_PPU, oy - z * cosE * FP_PPU - X * sinE * FP_PPU]; }
       : iso
-        ? (x, y, z) => { const [X, Y] = rot(x, y); return [ox + (X - Y) * I.a * S, oy + (X + Y) * I.b * S - z * 0.78 * S]; }
-        : (x, y, z) => { const [X, Y] = rot(x, y); return [ox + X, oy + Y * 0.8 - z * 0.95]; };
+        ? (x, y, z) => { const [X, Y] = rot(x, y); return [ox + (X - Y) * I.a * S * K, oy + ((X + Y) * I.b * S - z * 0.78 * S) * K]; }
+        : (x, y, z) => { const [X, Y] = rot(x, y); return [ox + X * K, oy + (Y * 0.8 - z * 0.95) * K]; };
     // which way faces the camera, in world x/y
     const toCam = fp ? [-1, 0] : iso ? [0.7071, 0.7071] : [0, 1];
     const L = fp ? [-0.6, 0.35, 0.72] : iso ? [-0.25, 0.45, 0.86] : [-0.35, -0.3, 0.88];
     const light = (nx, ny, nz) => 0.42 + 0.62 * Math.max(0, nx * L[0] + ny * L[1] + nz * L[2]);
-    const parts = model(color, bob).map(b => {
+    const parts = model(color, bob, roll).map(b => {
       const [X, Y] = rot((b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2);
       return { b, key: X * toCam[0] + Y * toCam[1] + b.z0 * 0.45 };
     }).sort((a, b) => a.key - b.key);
@@ -138,7 +144,7 @@ const TruckSprites = (() => {
       g.strokeStyle = style; g.lineWidth = w;
       g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.stroke();
     };
-    const lw = fp ? 1.3 : 0.8;
+    const lw = fp ? 1.3 : 0.9;
 
     for (const { b } of parts) {
       const faces = [
@@ -173,7 +179,7 @@ const TruckSprites = (() => {
               lerp(lerp(q[0], q[1], 0.7), lerp(q[3], q[2], 0.7), 0.7), lerp(lerp(q[0], q[1], 0.3), lerp(q[3], q[2], 0.3), 0.7)];
             fillQuad(hub, shadeColor([170, 172, 180], k));
             const lug = phase ? lerp(lerp(hub[0], hub[1], 0.5), lerp(hub[3], hub[2], 0.5), 0.2) : lerp(lerp(hub[0], hub[1], 0.5), lerp(hub[3], hub[2], 0.5), 0.8);
-            g.fillStyle = '#222'; g.fillRect(lug[0] - 0.6, lug[1] - 0.6, 1.2, 1.2);
+            g.fillStyle = '#222'; g.fillRect(lug[0] - 0.6 * K, lug[1] - 0.6 * K, 1.2 * K, 1.2 * K);
           }
         }
       }
@@ -187,7 +193,7 @@ const TruckSprites = (() => {
       }
     }
     // hood stripe
-    line(proj(3.0, 0, 5.32 + bob), proj(7.3, 0, 5.32 + bob), 'rgba(255,255,255,0.8)', fp ? 1.6 : 1);
+    line(proj(3.0, 0, 5.32 + bob), proj(7.3, 0, 5.32 + bob), 'rgba(255,255,255,0.8)', fp ? 1.6 : 1.4);
 
     // crisp pixels: hard alpha, then a dark outline
     const im = g.getImageData(0, 0, SIZE, SIZE);
@@ -212,8 +218,8 @@ const TruckSprites = (() => {
     return c;
   }
 
-  // variant: tread phase (0/1) + 2 * suspension (0 compressed, 1 normal, 2 extended)
-  function get(slot, mode = View.mode, variant = 2) {
+  // variant: tread phase (0/1) + 2 * suspension (0 compressed, 1 normal, 2 extended) + 6 * roll (0 left, 1 level, 2 right)
+  function get(slot, mode = View.mode, variant = 8) {
     const key = slot + mode + variant;
     if (!cache[key]) {
       const col = TRUCK_DEFS[slot].color;
@@ -264,6 +270,7 @@ class Truck {
     this.lapTimes = [];
     this.wrongWayT = 0;
     this.slip = 0;
+    this.drift = 0; this.yawRate = 0; this.roll = 0;
     this.lastImpact = 0;
     this.events = [];
   }
@@ -301,10 +308,14 @@ class Truck {
     if (this.bumpT > 0) { grip *= 0.5 + this.up.shocks * 0.08; this.bumpT -= dt; }
 
     let steerRate = 0;
+    // power slide: on the gas and turning at speed, the rear steps out; better tires hold it in
+    const slideWant = (!this.air && ctl.gas && !ctl.brake && Math.abs(ctl.steer) > 0.3 && f > top * 0.45) ? Math.abs(ctl.steer) : 0;
+    this.drift += (slideWant - this.drift) * Math.min(1, dt * (slideWant > this.drift ? 3.2 : 5));
     if (!this.air) {
       const sp = Math.abs(f);
       const turnF = Math.min(1, 0.4 + sp / 40);
-      steerRate = ctl.steer * PHYS.turn * turnF * (f < -3 ? -1 : 1);
+      steerRate = ctl.steer * PHYS.turn * turnF * (f < -3 ? -1 : 1) * (1 + 0.5 * this.drift);
+      grip *= 1 - 0.62 * this.drift * (1 - this.up.tires * 0.08);
       if (ctl.gas && !ctl.brake) {
         if (f < top) f = Math.min(top, f + acc * dt);
       } else if (ctl.brake) {
@@ -326,7 +337,12 @@ class Truck {
     }
     this.vx = c * f - s * l;
     this.vy = s * f + c * l;
-    this.h += steerRate * dt;
+    // the heading follows the wheel with a little inertia, so the truck has weight
+    this.yawRate += (steerRate - this.yawRate) * Math.min(1, dt * (this.air ? 3 : 9));
+    this.h += this.yawRate * dt;
+    // body roll toward the outside of the turn
+    const rollWant = this.air ? 0 : Math.max(-1, Math.min(1, this.yawRate * Math.max(0, f) / 260));
+    this.roll += (rollWant - this.roll) * Math.min(1, dt * 7);
     if (this.h > Math.PI) this.h -= Math.PI * 2;
     if (this.h < -Math.PI) this.h += Math.PI * 2;
 
@@ -339,9 +355,9 @@ class Truck {
     const R = PHYS.radius;
     this.x += this.vx * dt;
     this.y += this.vy * dt;
-    const c = track.clearance(this.x, this.y);
+    const c = track.clearance(this.x, this.y, this.idx);
     if (c >= R) return;
-    const n = track.wallNormal(this.x, this.y);
+    const n = track.wallNormal(this.x, this.y, this.idx);
     if (!n) return;
     this.x += n[0] * (R - c);
     this.y += n[1] * (R - c);
@@ -393,7 +409,7 @@ class Truck {
   }
 
   updateProgress(track) {
-    const i = track.idxAt(this.x, this.y);
+    const i = track.localIdx(this.x, this.y, this.idx);
     if (i < 0) return;
     const N = track.N;
     const d = i - this.idx;
@@ -412,8 +428,9 @@ class Truck {
     const phase = Math.floor(this.treadT) % 2;
     let susp = 1;
     if (this.air) susp = 2;
-    else if (this.bumpT > 0.05 || this.squatT > 0) susp = 0;
-    return phase + susp * 2;
+    else if (this.bumpT > 0.05) susp = 0;
+    const roll = this.roll > 0.35 ? 2 : this.roll < -0.35 ? 0 : 1;
+    return phase + susp * 2 + roll * 6;
   }
 
   draw(ctx, track, t, sun) {
@@ -427,6 +444,7 @@ class Truck {
     const bob = (!this.air && this.speed > 20 && surf !== SURF.DIRT) ? ((t * 20 | 0) % 2) : 0;
     const spr = TruckSprites.get(this.slot, View.mode, this.spriteVariant(t))[fi];
     const [px, py] = View.point(this.x, this.y, gh, lift + bob);
-    ctx.drawImage(spr, Math.round(px - spr.ox), Math.round(py - spr.oy));
+    const k = spr.res;
+    ctx.drawImage(spr, Math.round(px * k - spr.ox) / k, Math.round(py * k - spr.oy) / k, spr.width / k, spr.height / k);
   }
 }

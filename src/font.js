@@ -88,6 +88,7 @@ const Font = (() => {
   // opts: scale, align ('left'|'center'|'right'), shadow (color)
   function draw(ctx, str, x, y, color = '#fff', opts = {}) {
     str = String(str).toUpperCase();
+    ctx.imageSmoothingEnabled = false; // keep scaled glyphs crisp on any canvas
     const scale = opts.scale || 1;
     let px = Math.round(x);
     if (opts.align === 'center') px = Math.round(x - width(str, scale) / 2);

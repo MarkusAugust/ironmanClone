@@ -12,10 +12,11 @@ const Stadium = (() => {
   function flagman(flag, pose) {
     const key = flag + pose;
     if (cache[key]) return cache[key];
-    const W = 22, H = 22;
+    const K = RES, W = 22 * K, H = 22 * K;
     const c = document.createElement('canvas');
     c.width = W; c.height = H;
     const g = c.getContext('2d');
+    g.scale(K, K);
     const px = (x, y, col, w = 1, h = 1) => { g.fillStyle = col; g.fillRect(x, y, w, h); };
     const ox = 8;
     // legs and shoes
@@ -51,7 +52,13 @@ const Stadium = (() => {
       px(ox + 9, 0, '#555', 1, 5);
       flagRect(ox + 10, 0);
     }
-    c.ox = ox + 3; c.oy = 20;
+    // fine detail: eyes, belt, shading on the shirt
+    const h = 1 / K;
+    px(ox + 2.5, 5, '#1a1a1a', h, h); px(ox + 3.5, 5, '#1a1a1a', h, h);
+    px(ox, 13, '#3a2a1a', 7, h);
+    px(ox + 6, 8, 'rgba(0,0,0,0.25)', 1, 6);
+    px(ox + 1, 18, '#1a2448', 2, h); px(ox + 4, 18, '#1a2448', 2, h);
+    c.ox = (ox + 3) * K; c.oy = 20 * K; c.res = K;
     c.px = new Uint32Array(g.getImageData(0, 0, W, H).data.buffer);
     cache[key] = c;
     return c;
@@ -77,16 +84,19 @@ const Stadium = (() => {
   const banners = {};
   function banner(text) {
     if (banners[text]) return banners[text];
-    const W = 46, H = 11;
+    const K = RES, W = 46 * K, H = 11 * K;
     const c = document.createElement('canvas');
     c.width = W; c.height = H;
     const g = c.getContext('2d');
     g.fillStyle = '#141414'; g.fillRect(0, 0, W, H);
     for (let x = 0; x < W; x += 2) {
-      g.fillStyle = (x / 2) % 2 ? '#f4f4f4' : '#141414'; g.fillRect(x, 0, 2, 2);
-      g.fillStyle = (x / 2) % 2 ? '#141414' : '#f4f4f4'; g.fillRect(x, H - 2, 2, 2);
+      for (let row = 0; row < 2; row++) {
+        g.fillStyle = ((x / 2) + row) % 2 ? '#f4f4f4' : '#141414'; g.fillRect(x, row * 2, 2, 2);
+        g.fillStyle = ((x / 2) + row) % 2 ? '#141414' : '#f4f4f4'; g.fillRect(x, H - 4 + row * 2, 2, 2);
+      }
     }
-    Font.draw(g, text, W / 2, 2, '#ffd030', { align: 'center' });
+    Font.draw(g, text, W / 2, 5, '#ffd030', { align: 'center', scale: 2, shadow: '#5a3a00', shadowOffset: 1 });
+    c.res = K;
     c.px = new Uint32Array(g.getImageData(0, 0, W, H).data.buffer);
     banners[text] = c;
     return c;
@@ -106,7 +116,7 @@ const Stadium = (() => {
     ctx.fillRect(Math.round(sx - 4), Math.round(sy - 1), 9, 2);
     // small platform
     ctx.fillStyle = '#5a4630'; ctx.fillRect(Math.round(sx - 5), Math.round(sy - 2), 11, 2);
-    ctx.drawImage(spr, Math.round(sx - spr.ox), Math.round(sy - spr.oy - 2));
+    ctx.drawImage(spr, Math.round(sx - spr.ox / spr.res), Math.round(sy - spr.oy / spr.res - 2), spr.width / spr.res, spr.height / spr.res);
   }
 
   function drawGantry(ctx, race) {
@@ -132,27 +142,29 @@ const Stadium = (() => {
     ctx.translate(Math.round(start[0]), Math.round(start[1]));
     ctx.rotate(ang);
     // seen from straight above the banner is just its checkered top edge
-    if (View.mode === 'top') ctx.drawImage(ban, 0, 0, ban.width, 3, 0, -3, len, 3);
-    else ctx.drawImage(ban, 0, -ban.height, len, ban.height);
+    if (View.mode === 'top') ctx.drawImage(ban, 0, 0, ban.width, 4 * ban.res, 0, -3, len, 3);
+    else ctx.drawImage(ban, 0, -ban.height / ban.res, len, ban.height / ban.res);
     ctx.restore();
   }
 
   // ---- crowd and pennants ----
+  // one entry per fan: logical position of the head and shirt color
   function crowdPixels(track, mode) {
     track.crowd = track.crowd || {};
     if (track.crowd[mode]) return track.crowd[mode];
+    const R = RES, FW = WORLD_W * R;
+    const d = track.bg.getContext('2d').getImageData(0, 0, FW, STANDS_Y * R).data;
+    const I = View.ISO, VH = track.getViewHeightsFine();
     const list = [];
-    const d = track.bg.getContext('2d').getImageData(0, 0, WORLD_W, 30).data;
-    const I = View.ISO, VH = track.getViewHeights();
-    for (let y = 20; y < STANDS_Y - 1; y++) {
-      if ((y - 20) % 3 === 2) continue;
-      for (let x = 0; x < WORLD_W; x += 2) {
-        const p = y * WORLD_W + x;
-        const col = `rgb(${d[p * 4]},${d[p * 4 + 1]},${d[p * 4 + 2]})`;
+    for (let Y = 20 * R; Y < STANDS_Y * R - 6; Y += 6) {
+      for (let X = 0; X < FW; X += 3) {
+        const f = (Y + 3) * FW + X;
+        const head = `rgb(${d[Y * FW * 4 + X * 4]},${d[Y * FW * 4 + X * 4 + 1]},${d[Y * FW * 4 + X * 4 + 2]})`;
+        const shirt = `rgb(${d[f * 4]},${d[f * 4 + 1]},${d[f * 4 + 2]})`;
         if (mode === 'iso') {
-          const sx = Math.round(I.ox + (x - y) * I.a), sy = Math.round(I.oy + (x + y) * I.b - VH[p] * I.c);
-          if (sx >= 0 && sx < WORLD_W && sy > 20) list.push([sx, sy, col]);
-        } else list.push([x, y, col]);
+          const sx = (I.ox * R + (X - Y) * I.a) / R, sy = (I.oy * R + (X + Y) * I.b - VH[Y * FW + X] * I.c * R) / R;
+          if (sx >= 0 && sx < WORLD_W && sy > 20) list.push([sx, sy, head, shirt]);
+        } else list.push([X / R, Y / R, head, shirt]);
       }
     }
     track.crowd[mode] = list;
@@ -168,19 +180,21 @@ const Stadium = (() => {
     if (race.leaderDoneT >= 0 || (race.phase === 'run' && race.raceTime < 3)) hype += 1;
     const n = Math.floor(list.length * 0.04 * hype);
     const tick = Math.floor(race.time * 8);
+    const u = 1 / RES;
     for (let i = 0; i < n; i++) {
       const e = list[Math.floor(hash2(i, tick, 5) * list.length)];
-      ctx.fillStyle = e[2];
-      ctx.fillRect(e[0], e[1] - 1, 1, 1);
-      ctx.fillStyle = 'rgba(0,0,0,0.5)';
-      ctx.fillRect(e[0], e[1], 1, 1);
+      // the fan jumps one pixel up with arms raised
+      ctx.fillStyle = 'rgba(30,26,36,0.9)'; ctx.fillRect(e[0], e[1] + 4 * u, 2 * u, u);
+      ctx.fillStyle = e[3]; ctx.fillRect(e[0], e[1] + u, 2 * u, 3 * u);
+      ctx.fillStyle = e[2]; ctx.fillRect(e[0], e[1] - u, 2 * u, 2 * u);
+      ctx.fillRect(e[0] - u, e[1] - 2 * u, u, u); ctx.fillRect(e[0] + 2 * u, e[1] - 2 * u, u, u);
     }
     if (race.track.mood !== 'day') {
       // camera flashes
       ctx.fillStyle = '#ffffff';
       for (let i = 0; i < 3; i++) if (Math.random() < 0.25) {
         const e = list[Math.floor(Math.random() * list.length)];
-        ctx.fillRect(e[0], e[1] - 1, 1, 1);
+        ctx.fillRect(e[0], e[1], 2 / RES, 2 / RES);
       }
     }
   }
@@ -192,10 +206,13 @@ const Stadium = (() => {
       const sway = Math.round(Math.sin(race.time * 4 + x * 0.3));
       const [sx, sy] = View.point(x, y, 0, 4);
       if (View.iso && (sx < 0 || sx >= WORLD_W)) continue;
+      const u = 1 / RES, bx = Math.round(sx * RES) / RES, by = Math.round(sy * RES) / RES, sw = sway * u;
+      ctx.fillStyle = '#d0d0d8'; ctx.fillRect(bx - 4.5, by, 9, u);
       ctx.fillStyle = cols[k % cols.length];
-      ctx.fillRect(Math.round(sx) - 1, Math.round(sy), 3, 1);
-      ctx.fillRect(Math.round(sx) + sway, Math.round(sy) + 1, 2, 1);
-      ctx.fillRect(Math.round(sx) + sway, Math.round(sy) + 2, 1, 1);
+      ctx.fillRect(bx - 1.5, by + u, 3, u);
+      ctx.fillRect(bx - 1 + sw, by + 2 * u, 2, u);
+      ctx.fillRect(bx - 0.5 + sw, by + 3 * u, 1.5, u);
+      ctx.fillRect(bx + sw, by + 4 * u, u, u);
     }
   }
 

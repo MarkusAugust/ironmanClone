@@ -41,6 +41,39 @@ function pixelArt(rows) {
 }
 let PICKUP_SPRITES = null;
 
+// Pickups drawn at RES x detail.
+function nitroSprite() {
+  const K = RES, c = document.createElement('canvas');
+  c.width = 7 * K; c.height = 9 * K;
+  const g = c.getContext('2d');
+  g.scale(K, K);
+  g.fillStyle = '#140c08'; g.fillRect(0.5, 1.5, 6, 7.5);
+  g.fillStyle = '#d82020'; g.fillRect(1, 2, 5, 6.5);
+  g.fillStyle = '#ff6a50'; g.fillRect(1.5, 2, 1, 6.5);
+  g.fillStyle = '#8a1010'; g.fillRect(5, 2, 1, 6.5);
+  g.fillStyle = '#f4f4f4'; g.fillRect(1, 4, 5, 2);
+  g.fillStyle = '#d82020'; g.fillRect(2.5, 4.5, 0.5, 1); g.fillRect(4, 4.5, 0.5, 1); g.fillRect(3, 4.5, 0.5, 0.5); g.fillRect(3.5, 5, 0.5, 0.5);
+  g.fillStyle = '#b8bcc4'; g.fillRect(2, 0.5, 3, 1.5);
+  g.fillStyle = '#e8ecf0'; g.fillRect(2.5, 0.5, 1, 1);
+  c.res = K;
+  return c;
+}
+function moneySprite() {
+  const K = RES, c = document.createElement('canvas');
+  c.width = 9 * K; c.height = 9 * K;
+  const g = c.getContext('2d');
+  g.scale(K, K);
+  g.fillStyle = '#140c08';
+  g.beginPath(); g.ellipse(4.5, 6, 4.3, 3, 0, 0, Math.PI * 2); g.fill(); g.fillRect(3, 1.5, 3, 3);
+  g.fillStyle = '#c8a060';
+  g.beginPath(); g.ellipse(4.5, 6, 3.8, 2.6, 0, 0, Math.PI * 2); g.fill(); g.fillRect(3.4, 2, 2.2, 2.6);
+  g.fillStyle = '#e4c488'; g.beginPath(); g.ellipse(3.4, 5.2, 1.4, 1, 0, 0, Math.PI * 2); g.fill();
+  g.fillStyle = '#7a5a2a'; g.fillRect(3, 3.6, 3, 0.6);
+  Font.draw(g, '$', 4.6, 4.6, '#2a8a2a', { align: 'center', scale: 0.5 });
+  c.res = K;
+  return c;
+}
+
 function formatMoney(v) {
   return '$' + Math.round(v).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 }
@@ -51,7 +84,7 @@ function shortMoney(v) {
 
 class Race {
   constructor(track, entrants, opts = {}) {
-    if (!PICKUP_SPRITES) PICKUP_SPRITES = { nitro: pixelArt(PICKUP_ART.nitro), money: pixelArt(PICKUP_ART.money) };
+    if (!PICKUP_SPRITES) PICKUP_SPRITES = { nitro: nitroSprite(), money: moneySprite() };
     this.track = track;
     this.opts = opts;
     this.demo = !!opts.demo;
@@ -65,7 +98,7 @@ class Race {
     });
     // working copy of the background so tire marks can accumulate
     this.bg = document.createElement('canvas');
-    this.bg.width = WORLD_W; this.bg.height = WORLD_H;
+    this.bg.width = WORLD_W * RES; this.bg.height = WORLD_H * RES;
     this.bgCtx = this.bg.getContext('2d');
     this.bgCtx.drawImage(track.bg, 0, 0);
 
@@ -89,8 +122,10 @@ class Race {
     this.lastCount = -1;
     if (!this.demo) {
       for (const t of this.trucks) if (t.human) {
-        t.engine = Sound.createEngine(this.numHumans === 2 ? (t.player === 0 ? -0.4 : 0.4) : 0);
-        this.engines.push(t.engine);
+        const pan = this.numHumans === 2 ? (t.player === 0 ? -0.4 : 0.4) : 0;
+        t.engine = Sound.createEngine(pan);
+        t.skid = Sound.createSkid(pan);
+        this.engines.push(t.engine, t.skid);
       }
       this.spawnPickup(); this.spawnPickup();
     }
@@ -142,6 +177,11 @@ class Race {
     for (const t of this.trucks) if (t.engine) {
       const sp = Math.min(1.4, Math.abs(t.forward) / t.topSpeed);
       t.engine.set(sp, t.lastGas ? 1 : 0, t.nitroT > 0);
+      if (t.skid) {
+        const surf = this.track.surfAt(t.x, t.y);
+        const lvl = t.air || surf === SURF.WATER ? 0 : Math.max(t.drift * 0.8, Math.min(1, (t.slip - 12) / 40));
+        t.skid.set(lvl, surf === SURF.MUD ? 0.2 : 0.8);
+      }
     }
   }
 
@@ -242,8 +282,8 @@ class Race {
       const overlap = 2 * R - d;
       const ax = a.x - nx * overlap / 2, ay = a.y - ny * overlap / 2;
       const bx = b.x + nx * overlap / 2, by = b.y + ny * overlap / 2;
-      if (this.track.clearance(ax, ay) > PHYS.radius * 0.5) { a.x = ax; a.y = ay; }
-      if (this.track.clearance(bx, by) > PHYS.radius * 0.5) { b.x = bx; b.y = by; }
+      if (this.track.clearance(ax, ay, a.idx) > PHYS.radius * 0.5) { a.x = ax; a.y = ay; }
+      if (this.track.clearance(bx, by, b.idx) > PHYS.radius * 0.5) { b.x = bx; b.y = by; }
       const rv = (b.vx - a.vx) * nx + (b.vy - a.vy) * ny;
       if (rv < 0) {
         const imp = -(1 + 0.5) * rv / 2;
@@ -299,11 +339,11 @@ class Race {
     if (this.track.surfAt(x, y) === SURF.WATER) return;
     this.bgCtx.fillStyle = col;
     this.bgCtx.globalAlpha = 0.55;
-    this.bgCtx.fillRect(x | 0, y | 0, 2, 1);
+    this.bgCtx.fillRect(Math.round(x * RES), Math.round(y * RES), 3, 2);
     if (this.isoCtx) {
       const I = View.ISO, gh = this.track.heightAt(x, y);
       this.isoCtx.fillStyle = col; this.isoCtx.globalAlpha = 0.55;
-      this.isoCtx.fillRect(Math.round(I.ox + (x - y) * I.a), Math.round(I.oy + (x + y) * I.b - gh * I.c), 1, 1);
+      this.isoCtx.fillRect(Math.round((I.ox + (x - y) * I.a) * RES), Math.round((I.oy + (x + y) * I.b - gh * I.c) * RES), 2, 1);
       this.isoCtx.globalAlpha = 1;
     }
     this.bgCtx.globalAlpha = 1;
@@ -319,10 +359,10 @@ class Race {
     if (this.isoCtx) this.isoCtx.fillStyle = this.bgCtx.fillStyle;
     for (const side of [-4, 4]) {
       const x = t.x - c * 5 - s * side, y = t.y - s * 5 + c * side;
-      this.bgCtx.fillRect(x | 0, y | 0, 1, 1);
+      this.bgCtx.fillRect(Math.round(x * RES), Math.round(y * RES), 2, 2);
       if (this.isoCtx) {
         const I = View.ISO, gh = this.track.heightAt(x, y);
-        this.isoCtx.fillRect(Math.round(I.ox + (x - y) * I.a), Math.round(I.oy + (x + y) * I.b - gh * I.c), 1, 1);
+        this.isoCtx.fillRect(Math.round((I.ox + (x - y) * I.a) * RES), Math.round((I.oy + (x + y) * I.b - gh * I.c) * RES), 2, 1);
       }
     }
   }
@@ -370,7 +410,7 @@ class Race {
     if (!View.iso) return this.bg;
     if (!this.isoBg) {
       this.isoBg = document.createElement('canvas');
-      this.isoBg.width = WORLD_W; this.isoBg.height = WORLD_H;
+      this.isoBg.width = WORLD_W * RES; this.isoBg.height = WORLD_H * RES;
       this.isoCtx = this.isoBg.getContext('2d');
       this.isoCtx.drawImage(this.track.getIsoBg(), 0, 0);
     }
@@ -393,7 +433,7 @@ class Race {
     }
     ctx.save();
     ctx.translate(jx, jy);
-    ctx.drawImage(this.background(), 0, 0);
+    ctx.drawImage(this.background(), 0, 0, WORLD_W, WORLD_H);
     // shimmering water
     const water = View.iso ? tr.isoWater : tr.waterPix;
     if (water.length) {
@@ -401,7 +441,7 @@ class Race {
       const n = Math.min(30, water.length / 20);
       for (let i = 0; i < n; i++) {
         const p = water[(Math.random() * water.length) | 0];
-        ctx.fillRect(p % WORLD_W, (p / WORLD_W) | 0, 1, 1);
+        ctx.fillRect((p % (WORLD_W * RES)) / RES, ((p / (WORLD_W * RES)) | 0) / RES, 1 / RES, 1 / RES);
       }
     }
     Stadium.drawCrowd(ctx, this);
@@ -414,7 +454,8 @@ class Race {
       const [sx, sy] = View.point(p.x, p.y, tr.heightAt(p.x, p.y), 0);
       ctx.fillStyle = 'rgba(0,0,0,0.3)';
       ctx.fillRect(Math.round(sx - 3), Math.round(sy + 2), 7, 2);
-      ctx.drawImage(spr, Math.round(sx - spr.width / 2), Math.round(sy - spr.height + 2 - bob));
+      const w = spr.width / spr.res, h = spr.height / spr.res;
+      ctx.drawImage(spr, Math.round(sx - w / 2), Math.round(sy - h + 2 - bob), w, h);
     }
     Stadium.drawFlagman(ctx, this);
     FX.draw(ctx, this, true);
@@ -425,7 +466,9 @@ class Race {
     Stadium.drawGantry(ctx, this);
     // light: multiply the mood over the world, then add headlights at night
     ctx.globalCompositeOperation = 'multiply';
-    ctx.drawImage(Mood.overlay(tr, View.mode), 0, 0);
+    ctx.imageSmoothingEnabled = !View.iso;
+    ctx.drawImage(Mood.overlay(tr, View.mode), 0, 0, WORLD_W, WORLD_H);
+    ctx.imageSmoothingEnabled = false;
     ctx.globalCompositeOperation = 'source-over';
     Mood.headlights(ctx, this);
 
@@ -489,7 +532,7 @@ class Race {
     const cx = WORLD_W / 2;
     if (this.phase === 'intro' && !this.demo) {
       panel(ctx, 70, 92, 260, 96);
-      Font.draw(ctx, `SEASON ${this.opts.season}  -  RACE ${this.opts.raceNo} OF ${TRACK_DEFS.length}`, cx, 102, '#cfc8d8', { align: 'center' });
+      Font.draw(ctx, `SEASON ${this.opts.season}  -  RACE ${this.opts.raceNo} OF ${TRACK_DEFS.length}${this.opts.diffLabel ? '  -  ' + this.opts.diffLabel : ''}`, cx, 102, '#cfc8d8', { align: 'center' });
       Font.draw(ctx, this.track.name, cx, 118, '#ffd84a', { align: 'center', scale: 2, shadow: '#5a2a00' });
       Font.draw(ctx, `${LAPS} LAPS`, cx, 142, '#ffffff', { align: 'center' });
       Font.draw(ctx, 'DO NOT FINISH LAST!', cx, 158, '#ff7060', { align: 'center' });
@@ -524,8 +567,9 @@ class Race {
 
 // Small side-view of a truck for HUD rows and tables.
 function drawTruckIcon(ctx, slot, x, y) {
-  const spr = TruckSprites.get(slot, 'top', 2)[0];
-  ctx.drawImage(spr, 7, 8, 18, 17, x, y, 18, 17);
+  const spr = TruckSprites.get(slot, 'top', 8)[0];
+  const k = spr.res || 1;
+  ctx.drawImage(spr, 7 * k, 8 * k, 18 * k, 17 * k, x, y, 18, 17);
 }
 
 const BADGE = [['#ffd84a', '#4a3200'], ['#d8dae2', '#30323a'], ['#d8904a', '#3a1c00'], ['#4a4452', '#cfc8d8']];
