@@ -49,6 +49,7 @@ class Track {
     this.name = def.name + (variant === 1 ? ' II' : variant === 2 ? ' III' : variant === 3 ? ' IV' : '');
     this.seed = defIndex * 31 + variant * 7 + 3;
     this.halfW = TRACK_WIDTH / 2;
+    this.mood = MOOD_ORDER[(defIndex + variant) % MOOD_ORDER.length];
 
     let pts = def.pts.map(p => [p[0], p[1]]);
     let features = def.features.map(f => Object.assign({}, f));
@@ -213,6 +214,7 @@ class Track {
     const dist = new Uint8Array(W * H).fill(255);
     const q = new Int32Array(W * H);
     let qh = 0, qt = 0;
+    const near = Int16Array.from(idx); // nearest centerline sample, also off the track
     for (let p = 0; p < W * H; p++) if (surf[p]) { dist[p] = 0; q[qt++] = p; }
     while (qh < qt) {
       const p = q[qh++];
@@ -221,7 +223,7 @@ class Track {
       if (nd > 40) continue;
       const nb = [x > 0 ? p - 1 : -1, x < W - 1 ? p + 1 : -1, y > 0 ? p - W : -1, y < H - 1 ? p + W : -1];
       for (const o of nb) {
-        if (o >= 0 && dist[o] === 255) { dist[o] = nd; hgt[o] = hgt[p]; q[qt++] = o; }
+        if (o >= 0 && dist[o] === 255) { dist[o] = nd; hgt[o] = hgt[p]; near[o] = near[p]; q[qt++] = o; }
       }
     }
     // soften seams between samples so slopes stay continuous
@@ -238,8 +240,35 @@ class Track {
         hgt[y * W + x] = sum / n;
       }
     }
-    Object.assign(this, { surf, idx, lat, hgt, dist });
+    Object.assign(this, { surf, idx, lat, hgt, dist, near });
     this.buildSDF();
+    this.placeLandmarks();
+  }
+
+  // Flagman beside the start line and the start/finish gantry poles.
+  placeLandmarks() {
+    const nx = -this.ty[0], ny = this.tx[0];
+    const cx = this.cx[0], cy = this.cy[0];
+    this.gantry = [-1, 1].map(sd => [cx + nx * sd * (this.halfW + 3), cy + ny * sd * (this.halfW + 3)]);
+    this.flagman = null;
+    for (const sd of [1, -1]) {
+      for (const off of [11, 14, 18]) {
+        const x = cx + nx * sd * (this.halfW + off) + this.tx[0] * 6, y = cy + ny * sd * (this.halfW + off) + this.ty[0] * 6;
+        if (!this.inside(x, y) || y < STANDS_Y + 6) continue;
+        if (this.dist[this.pix(x, y)] >= 7) { this.flagman = { x, y }; break; }
+      }
+      if (this.flagman) break;
+    }
+  }
+
+  // 0..1 position inside a jump if s is on one, else -1
+  jumpU(s) {
+    for (const f of this.features) {
+      if (f.t !== 'jump') continue;
+      const ds = ((s - f.s0) % this.L + this.L) % this.L;
+      if (ds < f.len) return ds / f.len;
+    }
+    return -1;
   }
 
   // Signed distance to the wall edge: positive on the track, negative inside walls.
@@ -381,11 +410,19 @@ class Track {
           continue;
         }
         if (s === SURF.DIRT) {
-          const v = 0.86 + nz * 0.26 + (fine - 0.5) * 0.08;
-          r = 186 * v; gg = 134 * v; b = 82 * v;
           const d = Math.abs(this.lat[p]);
+          // packed racing line is lighter, loose dirt toward the walls darker
+          const v = (0.84 + nz * 0.26 + (fine - 0.5) * 0.1) * (1.05 - Math.min(1, d / this.halfW) * 0.12);
+          r = 186 * v; gg = 134 * v; b = 82 * v;
           if (Math.abs(d - 6) < 1.2 || Math.abs(d - 11) < 1) { r *= 0.9; gg *= 0.9; b *= 0.9; }
+          if (fine > 0.986) { r = 196; gg = 186; b = 170; }          // pebbles
+          else if (fine < 0.012) { r = 96; gg = 70; b = 48; }
           const si = this.idx[p] * this.sp;
+          const ju = this.jumpU(si);
+          if (ju > 0.6 && ju < 0.72) {                              // hazard stripes on the jump lip
+            const st = Math.floor((this.lat[p] + 40 + (ju - 0.6) * 30) / 3) % 2;
+            if (st) { r = 240; gg = 196; b = 40; } else { r = 34; gg = 30; b = 26; }
+          }
           if (si < 6) {
             const chk = (Math.floor(si / 3) + Math.floor((this.lat[p] + 30) / 3)) % 2;
             if (chk) { r = 235; gg = 235; b = 230; } else { r = 30; gg = 30; b = 34; }
@@ -397,17 +434,35 @@ class Track {
         } else if (s === SURF.WATER) {
           const v = 0.85 + nz * 0.3;
           r = 50 * v; gg = 98 * v; b = 160 * v;
+          const wet = (xx, yy) => this.surfAt(xx, yy) === SURF.WATER;
+          const deep = wet(x - 3, y) && wet(x + 3, y) && wet(x, y - 3) && wet(x, y + 3);
+          const edge = !(wet(x - 1, y) && wet(x + 1, y) && wet(x, y - 1) && wet(x, y + 1));
+          if (deep) { r *= 0.72; gg *= 0.78; b *= 0.85; }
           if (fbm(x * 0.3, y * 0.6, seed + 5) > 0.68) { r += 50; gg += 50; b += 50; }
+          if (edge) { r = 196; gg = 214; b = 224; }                  // foam line
           this.waterPix.push(p);
         } else {
           const d = this.dist[p];
           if (d <= 6) {
             const v = 0.92 + nz * 0.18;
             r = 206 * v; gg = 166 * v; b = 112 * v;
+            if (d === 2 || d === 3) {
+              // tire wall along the berm crest, every fifth tire painted white
+              const along = this.near[p] * this.sp;
+              const seg = Math.floor(along / 3.2);
+              if ((along % 3.2) < 2.5) {
+                const white = seg % 5 === 0;
+                const hole = d === 3 && (along % 3.2) > 0.8 && (along % 3.2) < 1.7;
+                r = white ? 222 : 34; gg = white ? 222 : 32; b = white ? 214 : 34;
+                if (hole) { r *= 0.5; gg *= 0.5; b *= 0.5; }
+              }
+            }
           } else {
             const v = 0.75 + nz * 0.4 + (fine - 0.5) * 0.12;
-            r = 78 * v; gg = 100 * v; b = 46 * v;
+            const mow = Math.floor((x + y) / 12) % 2 ? 1.07 : 0.93;   // mowing stripes
+            r = 78 * v * mow; gg = 100 * v * mow; b = 46 * v * mow;
             if (fbm(x * 0.05, y * 0.05, seed + 40) > 0.66) { r = 120 * v; gg = 98 * v; b = 60 * v; }
+            if (fine > 0.995) { r = 230; gg = 220; b = 120; }          // wild flowers
           }
         }
         // slope lighting
@@ -430,6 +485,8 @@ class Track {
     g.fillStyle = '#c8c8d0'; g.fillRect(0, STANDS_Y - 1, W, 1);
     g.fillStyle = '#5a5a66'; g.fillRect(0, STANDS_Y, W, 1);
 
+    this.drawBoards(g);
+
     // tire stacks on the infield
     let placed = 0;
     this.decor = [];
@@ -437,8 +494,9 @@ class Track {
       const x = 8 + Math.floor(hash2(k, 1, seed) * (W - 16));
       const y = STANDS_Y + 8 + Math.floor(hash2(k, 2, seed) * (H - STANDS_Y - 14));
       if (this.dist[y * W + x] < 9) continue;
-      this.drawTireStack(g, x, y);
-      this.decor.push([x, y]);
+      const hay = placed % 3 === 1;
+      if (hay) this.drawHayBale(g, x, y); else this.drawTireStack(g, x, y);
+      this.decor.push([x, y, hay ? 3 : 4]);
       placed++;
     }
     this.bg = c;
@@ -449,10 +507,13 @@ class Track {
     if (this.viewH) return this.viewH;
     const W = WORLD_W, H = WORLD_H;
     const VH = Float32Array.from(this.V);
-    for (const [dx, dy] of this.decor) {
-      for (let y = dy - 4; y <= dy + 1; y++) for (let x = dx - 2; x <= dx + 2; x++) {
-        if (x >= 0 && y >= 0 && x < W && y < H) VH[y * W + x] += 4;
+    for (const [dx, dy, dh] of this.decor) {
+      for (let y = dy - 4; y <= dy + 1; y++) for (let x = dx - 3; x <= dx + 3; x++) {
+        if (x >= 0 && y >= 0 && x < W && y < H) VH[y * W + x] += dh;
       }
+    }
+    for (const [x0, x1] of this.boards || []) {
+      for (let y = H - 10; y < H; y++) for (let x = x0 - 1; x <= x1; x++) VH[y * W + x] = Math.max(VH[y * W + x], 6);
     }
     for (let y = 0; y < STANDS_Y; y++) for (let x = 0; x < W; x++) VH[y * W + x] = (STANDS_Y - y) * 0.62 + 2;
     this.viewH = VH;
@@ -510,6 +571,31 @@ class Track {
     this.isoWater = water;
     this.isoBg = c;
     return c;
+  }
+
+  drawHayBale(g, x, y) {
+    g.fillStyle = 'rgba(0,0,0,0.35)'; g.fillRect(x - 3, y + 1, 9, 3);
+    g.fillStyle = '#b8902e'; g.fillRect(x - 4, y - 3, 9, 5);
+    g.fillStyle = '#e2bc52'; g.fillRect(x - 4, y - 4, 9, 2);
+    g.fillStyle = '#8a6a20'; g.fillRect(x - 2, y - 4, 1, 6); g.fillRect(x + 2, y - 4, 1, 6);
+  }
+
+  // Sponsor boards along the front edge of the stadium.
+  drawBoards(g) {
+    const W = WORLD_W, H = WORLD_H;
+    const names = ['DIRTCO', 'NITRO-X', 'MUDLINE', 'GRIT OIL', 'ROCKJAW', 'TREADZ'];
+    const cols = [['#c8281c', '#fff'], ['#1c3c9c', '#ffd84a'], ['#f0c020', '#201810'], ['#1a1a1e', '#ff7020'], ['#2a7a3a', '#fff'], ['#e8e8e8', '#c8281c']];
+    this.boards = [];
+    for (let x0 = 2, k = (this.seed % names.length); x0 + 56 < W; x0 += 60, k++) {
+      let clear = true;
+      for (let x = x0; x < x0 + 56 && clear; x += 2) if (this.dist[(H - 4) * W + x] < 8) clear = false;
+      if (!clear) continue;
+      const [bg, fg] = cols[k % cols.length];
+      g.fillStyle = '#111'; g.fillRect(x0 - 1, H - 10, 58, 10);
+      g.fillStyle = bg; g.fillRect(x0, H - 9, 56, 8);
+      Font.draw(g, names[k % names.length], x0 + 28, H - 8, fg, { align: 'center' });
+      this.boards.push([x0, x0 + 56]);
+    }
   }
 
   drawTireStack(g, x, y) {

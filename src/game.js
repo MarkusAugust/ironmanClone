@@ -267,6 +267,7 @@ function update(dt) {
     case 'title': updateTitle(dt); break;
     case 'race': updateRace(dt); break;
     case 'results':
+      if (race) { race.time += dt; Stadium.updateConfetti(race, dt); }
       if (stateT > 1 && (Input.pressed('Enter', 'Space') || tapped)) afterResults();
       break;
     case 'shop': updateShop(dt); break;
@@ -441,20 +442,50 @@ function dim(a) {
   ctx.fillRect(0, 0, WORLD_W, WORLD_H);
 }
 
+let logoCache = null;
 function drawLogo(cx, y, scale) {
+  // rendered once, then a shine sweeps across it every few seconds
+  if (!logoCache) {
+    const text = 'IRON DIRT';
+    const w = Font.width(text, scale) + 24, h = Font.HEIGHT * scale + 14;
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    logoCtxDraw(c.getContext('2d'), w / 2, 4, scale);
+    logoCache = c;
+  }
+  const c = logoCache;
+  const tmp = logoShine || (logoShine = document.createElement('canvas'));
+  tmp.width = c.width; tmp.height = c.height;
+  const g = tmp.getContext('2d');
+  g.drawImage(c, 0, 0);
+  const phase = (stateT % 4) / 1.2;
+  if (phase < 1) {
+    g.globalCompositeOperation = 'source-atop';
+    const sx = -40 + phase * (c.width + 80);
+    const grad = g.createLinearGradient(sx - 20, 0, sx + 20, c.height);
+    grad.addColorStop(0, 'rgba(255,255,255,0)'); grad.addColorStop(0.5, 'rgba(255,255,255,0.75)'); grad.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = grad; g.fillRect(0, 0, c.width, c.height);
+    g.globalCompositeOperation = 'source-over';
+  }
+  const bob = Math.round(Math.sin(stateT * 2) * 1.5);
+  ctx.drawImage(tmp, Math.round(cx - c.width / 2), y - 4 + bob);
+}
+let logoShine = null;
+
+function logoCtxDraw(lc, cx, y, scale) {
   const text = 'IRON DIRT';
   const w = Font.width(text, scale);
   const x = cx - w / 2;
   for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1], [2, 2], [3, 3], [1, 3], [3, 1]]) {
-    Font.draw(ctx, text, x + dx * Math.max(1, scale / 3), y + dy * Math.max(1, scale / 3), '#240c00', { scale });
+    Font.draw(lc, text, x + dx * Math.max(1, scale / 3), y + dy * Math.max(1, scale / 3), '#240c00', { scale });
   }
   const h = Font.HEIGHT * scale;
   const bands = [['#fff6a0', 0, 0.3], ['#ffd030', 0.3, 0.6], ['#ff8a18', 0.6, 0.85], ['#d84a10', 0.85, 1]];
   for (const [col, a, b] of bands) {
-    ctx.save();
-    ctx.beginPath(); ctx.rect(x - 2, y + h * a, w + 4, h * (b - a) + 0.5); ctx.clip();
-    Font.draw(ctx, text, x, y, col, { scale });
-    ctx.restore();
+    lc.save();
+    lc.beginPath(); lc.rect(x - 2, y + h * a, w + 4, h * (b - a) + 0.5); lc.clip();
+    Font.draw(lc, text, x, y, col, { scale });
+    lc.restore();
   }
 }
 
@@ -469,6 +500,7 @@ function renderTitle() {
 
   if (showHelp) { renderHelp(); return; }
   const items = titleItems();
+  panel(ctx, 100, TITLE_Y - 9, 200, items.length * TITLE_STEP + 9);
   items.forEach((it, i) => {
     const y = TITLE_Y + i * TITLE_STEP;
     const sel = i === titleSel;
@@ -542,9 +574,9 @@ function renderResults() {
     const d = TRUCK_DEFS[r.slot];
     if (r.human) { ctx.fillStyle = 'rgba(255,255,255,0.07)'; ctx.fillRect(16, y - 4, 368, 15); }
     Font.draw(ctx, PLACE_NAMES[r.place - 1], 24, y, r.place === 1 ? '#fff27a' : '#ffffff');
-    ctx.fillStyle = d.hud; ctx.fillRect(56, y, 6, 7);
+    drawTruckIcon(ctx, r.slot, 50, y - 6);
     const nm = r.human ? `P${r.player + 1} ${r.name}` : r.name;
-    Font.draw(ctx, nm, 66, y, d.hud);
+    Font.draw(ctx, nm, 72, y, d.hud);
     Font.draw(ctx, fmtTime(r.time), 170, y, '#cfc8d8');
     if (r.human) {
       Font.draw(ctx, formatMoney(r.prize), 290, y, '#8cf07a', { align: 'right' });
@@ -559,9 +591,9 @@ function renderResults() {
   order.forEach((slot, i) => {
     const x = 24 + i * 92, y = 140;
     const d = TRUCK_DEFS[slot];
-    ctx.fillStyle = d.hud; ctx.fillRect(x, y, 6, 7);
-    Font.draw(ctx, d.name, x + 10, y, d.hud);
-    Font.draw(ctx, `${career.points[slot]} PTS`, x + 10, y + 10, '#cfc8d8');
+    drawTruckIcon(ctx, slot, x - 4, y - 3);
+    Font.draw(ctx, d.name, x + 16, y, d.hud);
+    Font.draw(ctx, `${career.points[slot]} PTS`, x + 16, y + 10, '#cfc8d8');
   });
 
   let y = 172;
@@ -595,7 +627,9 @@ function renderShop() {
   Font.draw(ctx, `NEXT: ${nextTrack}`, 8, 7, '#cfc8d8');
   Font.draw(ctx, 'SAVED', 300, 7, '#6ac85a', { align: 'right' });
 
-  for (const L of shopLayout()) {
+  const layout = shopLayout();
+  if (layout.length === 1) drawShopPreview(career.players[layout[0].col.player], layout[0].col.player);
+  for (const L of layout) {
     const col = L.col, p = career.players[col.player];
     const d = TRUCK_DEFS[col.player];
     const x = L.x, w = L.w;
@@ -615,12 +649,13 @@ function renderShop() {
       ctx.fillStyle = sel ? 'rgba(255,216,74,0.18)' : 'rgba(255,255,255,0.04)';
       ctx.fillRect(x + 4, y - 4, w - 8, 22);
       if (sel) { ctx.fillStyle = '#ffd84a'; ctx.fillRect(x + 4, y - 4, 2, 22); }
-      Font.draw(ctx, r.label, x + 12, y, sel ? '#ffd84a' : '#ffffff');
-      if (r.sub) Font.draw(ctx, r.sub, x + 12, y + 9, '#ff8070');
+      ctx.drawImage(shopIcon(i), x + 10, y + 2);
+      Font.draw(ctx, r.label, x + 23, y, sel ? '#ffd84a' : '#ffffff');
+      if (r.sub) Font.draw(ctx, r.sub, x + 23, y + 9, '#ff8070');
       if (r.lvl != null) {
         for (let k = 0; k < MAX_LEVEL; k++) {
           ctx.fillStyle = k < r.lvl ? d.hud : '#3a3444';
-          ctx.fillRect(x + 12 + k * 9, y + 9, 7, 4);
+          ctx.fillRect(x + 23 + k * 9, y + 9, 7, 4);
         }
       }
       if (r.price) Font.draw(ctx, formatMoney(r.price), x + w - 10, y + 4, p.money >= r.price ? '#8cf07a' : '#7a4a4a', { align: 'right' });
@@ -632,6 +667,52 @@ function renderShop() {
       Font.draw(ctx, keys, x + w / 2, 276, '#7a7486', { align: 'center' });
     }
   }
+}
+
+// pixel-art icons for the shop rows
+const SHOP_ICON_ART = [
+  ['..kkk..', '..kwk..', '.kRRRk.', '.kRwRk.', '.kRwRk.', '.kRwRk.', '.kRRRk.', '..kkk..', '.......'],
+  ['..kkkkk..', '.kkgggkk.', 'kkg...gkk', 'kg..w..gk', 'kg.wkw.gk', 'kg..w..gk', 'kkg...gkk', '.kkgggkk.', '..kkkkk..'],
+  ['...ggg...', '....g....', '..yyyyy..', '....y....', '..yyyyy..', '....y....', '..yyyyy..', '....g....', '...ggg...'],
+  ['.....yy..', '....yy...', '...yy....', '..yyyyyy.', '.....yy..', '....yy...', '...yy....', '..yy.....', '.y.......'],
+  ['..kkkkk..', '.kwwwwwk.', 'kwwwwwRwk', 'kwwwwRwwk', 'kwwwRwwwk', 'kwwkkwwwk', '.kwwwwwk.', '..kkkkk..', '.........'],
+  ['kwkwkw...', 'wkwkwk...', 'kwkwkw...', 'wkwkwk...', 'g........', 'g........', 'g........', 'g........', 'g........'],
+];
+const SHOP_PAL = { k: '#141018', w: '#f4f4f4', R: '#e02828', g: '#9a9aa4', y: '#ffd030' };
+const shopIcons = [];
+function shopIcon(i) {
+  if (!shopIcons[i]) {
+    const rows = SHOP_ICON_ART[i];
+    const c = document.createElement('canvas');
+    c.width = rows[0].length; c.height = rows.length;
+    const g = c.getContext('2d');
+    rows.forEach((r, y) => [...r].forEach((ch, x) => { if (ch !== '.') { g.fillStyle = SHOP_PAL[ch]; g.fillRect(x, y, 1, 1); } }));
+    shopIcons[i] = c;
+  }
+  return shopIcons[i];
+}
+
+// One player: the truck turns on a platform at the left, stats on the right.
+function drawShopPreview(p, slot) {
+  const cx = 50, cy = 186;
+  ctx.fillStyle = '#2a2432';
+  ctx.beginPath(); ctx.ellipse(cx, cy + 4, 36, 12, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#3a3346';
+  ctx.beginPath(); ctx.ellipse(cx, cy + 2, 36, 12, 0, 0, Math.PI * 2); ctx.fill();
+  const frames = TruckSprites.get(slot, 'iso', Math.floor(stateT * 6) % 2 + 2);
+  const spr = frames[Math.floor(stateT * 5) % SPRITE_STEPS];
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(spr, Math.round(cx - spr.ox * 2), Math.round(cy - spr.oy * 2), spr.width * 2, spr.height * 2);
+  Font.draw(ctx, 'YOUR RIDE', cx, 120, '#cfc8d8', { align: 'center' });
+  const top = Math.round((PHYS.baseTop + PHYS.topPer * p.up.speed) * 0.9);
+  const acc = Math.round((PHYS.baseAcc + PHYS.accPer * p.up.accel) / 10);
+  const grip = (PHYS.baseGrip + PHYS.gripPer * p.up.tires).toFixed(1);
+  const lines = [['TOP SPEED', `${top} MPH`], ['ACCEL', `${acc}`], ['GRIP', grip], ['SHOCKS', `LVL ${p.up.shocks}`]];
+  Font.draw(ctx, 'STATS', 350, 120, '#cfc8d8', { align: 'center' });
+  lines.forEach(([k, v], i) => {
+    Font.draw(ctx, k, 350, 140 + i * 24, '#7a7486', { align: 'center' });
+    Font.draw(ctx, v, 350, 150 + i * 24, '#ffffff', { align: 'center' });
+  });
 }
 
 function drawLogoSmall(text, cx, y) {

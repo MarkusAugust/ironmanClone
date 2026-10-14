@@ -8,6 +8,8 @@ Three camera views, cycled with `V` or the VIEW button under the screen, even mi
 2. **First person**: from the driver's seat, with a steering wheel that turns as you steer, a speedometer and a NITRO button that lights up while the boost burns. With two players the screen splits into a top half (P1) and a bottom half (P2).
 3. **Top-down 2D**: the classic arcade view.
 
+Each track has its own light: daytime sun, sunset, or night under floodlights with headlights on. The stadium is alive with a jumping crowd, a flagman who signals the start, final lap and finish, and a start/finish gantry. Trucks kick up dust, sling mud that stains the track, spray water, spit nitro flames and throw sparks off the walls; hard landings shake the screen (off when your system asks for reduced motion).
+
 Plain HTML5 Canvas and JavaScript, no build step and no dependencies. All graphics are drawn in code and all sound is synthesized with the Web Audio API.
 
 ## Play
@@ -45,9 +47,12 @@ In one-player mode either set works. `V` switches view, `P` pauses, `M` toggles 
 | `src/track.js` | Builds a track: wall mask, distance field for collisions, heightmap, lap index, top-down art and the isometric diorama |
 | `src/view.js` | Camera modes: isometric 3D, first person, top-down 2D |
 | `src/cockpit.js` | First-person view: voxel heightfield renderer, truck billboards with depth test, cockpit with wheel, gauges and nitro light |
-| `src/truck.js` | Truck sprites (3D boxes rendered to 32 angles for each view) and arcade physics |
+| `src/truck.js` | Truck sprites (stadium pickups built from 3D boxes, 32 angles, rolling tread and suspension variants per view) and arcade physics |
 | `src/ai.js` | CPU drivers |
-| `src/race.js` | A race: laps, pickups, particles, HUD |
+| `src/race.js` | A race: laps, pickups, drawing order, HUD |
+| `src/fx.js` | Particles: dust, mud, water, nitro flames, sparks, landing dust, screen shake |
+| `src/mood.js` | Lighting per track: day, sunset, night with floodlight pools and headlights |
+| `src/stadium.js` | Flagman, start/finish gantry, crowd, pennants, confetti |
 | `src/game.js` | Title, career, results, speed shop, seasons, game over |
 | `src/audio.js` | Engine sounds, effects and chiptune music |
 | `src/font.js` | 5x7 bitmap font |

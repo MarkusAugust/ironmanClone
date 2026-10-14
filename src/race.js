@@ -185,7 +185,7 @@ class Race {
     for (const e of t.events) {
       if (e === 'nitro') {
         if (t.human) Sound.sfx.nitro();
-        this.burst(t.x, t.y, 6, ['#ffd040', '#ff8a20', '#ffffff'], 30);
+        FX.nitroStart(this, t);
       } else if (e === 'cross') {
         if (t.crossings > t.maxCross) {
           t.maxCross = t.crossings;
@@ -198,10 +198,10 @@ class Race {
         }
       } else if (e.t === 'wall') {
         if (t.human || this.isNearHuman(t)) Sound.sfx.crash(e.power / 60);
-        this.burst(t.x, t.y, 5, ['#d8b880', '#a88458'], e.power * 0.4);
+        FX.wallHit(this, t, e.power);
       } else if (e.t === 'land') {
         if (t.human) Sound.sfx.land();
-        this.burst(t.x, t.y + 2, 10, ['#e0c896', '#b89868'], 40);
+        FX.landing(this, t, e.power);
       }
     }
     t.events.length = 0;
@@ -218,6 +218,7 @@ class Race {
     this.finishOrder.push(t);
     if (this.leaderDoneT < 0) this.leaderDoneT = this.raceTime;
     if (t.human) {
+      if (t.place === 1) Stadium.confetti(this);
       Sound.sfx.finish();
       const who = this.numHumans === 2 ? `P${t.player + 1} ` : '';
       this.message(`${who}FINISHED ${PLACE_NAMES[t.place - 1]}!`, t.def.hud, 2.5);
@@ -293,12 +294,19 @@ class Race {
     this.pickups = this.pickups.filter(p => !p.taken && p.life > 0);
   }
 
-  burst(x, y, n, cols, speed) {
-    for (let i = 0; i < n; i++) {
-      const a = Math.random() * Math.PI * 2, s = Math.random() * speed;
-      this.particles.push({ x, y, z: 2, vx: Math.cos(a) * s, vy: Math.sin(a) * s, vz: 20 + Math.random() * 30,
-        life: 0.4 + Math.random() * 0.4, col: cols[i % cols.length], g: 120 });
+  // mud splat left where a clod lands
+  stain(x, y, col) {
+    if (this.track.surfAt(x, y) === SURF.WATER) return;
+    this.bgCtx.fillStyle = col;
+    this.bgCtx.globalAlpha = 0.55;
+    this.bgCtx.fillRect(x | 0, y | 0, 2, 1);
+    if (this.isoCtx) {
+      const I = View.ISO, gh = this.track.heightAt(x, y);
+      this.isoCtx.fillStyle = col; this.isoCtx.globalAlpha = 0.55;
+      this.isoCtx.fillRect(Math.round(I.ox + (x - y) * I.a), Math.round(I.oy + (x + y) * I.b - gh * I.c), 1, 1);
+      this.isoCtx.globalAlpha = 1;
     }
+    this.bgCtx.globalAlpha = 1;
   }
 
   tireMarks(t) {
@@ -334,36 +342,9 @@ class Race {
       const pitch = Math.max(-28, Math.min(28, t.vz * 0.35));
       t.camPitch = (t.camPitch || 0) + (pitch - (t.camPitch || 0)) * Math.min(1, dt * 6);
     }
-    // dust and spray
-    for (const t of this.trucks) {
-      if (t.air) continue;
-      const sp = t.speed;
-      if (sp < 20) continue;
-      const surf = this.track.surfAt(t.x, t.y);
-      const rate = (sp / 100) * (surf === SURF.DIRT ? 22 : 45) * dt;
-      let n = Math.floor(rate) + (Math.random() < rate % 1 ? 1 : 0);
-      const c = Math.cos(t.h), s = Math.sin(t.h);
-      while (n-- > 0) {
-        const side = (Math.random() < 0.5 ? -1 : 1) * 4;
-        const x = t.x - c * 7 - s * side, y = t.y - s * 7 + c * side;
-        let col, vz, life;
-        if (surf === SURF.WATER) { col = Math.random() < 0.5 ? '#e8f4ff' : '#8cc0f0'; vz = 40 + Math.random() * 30; life = 0.5; }
-        else if (surf === SURF.MUD) { col = Math.random() < 0.5 ? '#5a3a20' : '#7a5232'; vz = 30 + Math.random() * 30; life = 0.6; }
-        else { col = Math.random() < 0.5 ? '#d8bc8c' : '#c4a274'; vz = 8 + Math.random() * 10; life = 0.5 + Math.random() * 0.3; }
-        this.particles.push({ x, y, z: 1, vx: -c * sp * 0.2 + (Math.random() - 0.5) * 20, vy: -s * sp * 0.2 + (Math.random() - 0.5) * 20,
-          vz, life, col, g: surf === SURF.DIRT ? -6 : 160, dust: surf === SURF.DIRT });
-      }
-      if (surf === SURF.WATER && t.lastSurf !== SURF.WATER && t.human) Sound.sfx.splash();
-      t.lastSurf = surf;
-    }
-    for (const p of this.particles) {
-      p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt; p.vz -= p.g * dt;
-      p.vx *= Math.exp(-3 * dt); p.vy *= Math.exp(-3 * dt);
-      if (p.z < 0) { p.z = 0; p.vz = 0; p.vx *= 0.5; p.vy *= 0.5; }
-      p.life -= dt;
-    }
-    this.particles = this.particles.filter(p => p.life > 0);
-    if (this.particles.length > 500) this.particles.splice(0, this.particles.length - 500);
+    FX.emit(this, dt);
+    FX.update(this, dt);
+    Stadium.updateConfetti(this, dt);
     for (const f of this.floaters) { f.off += 14 * dt; f.life -= dt; }
     this.floaters = this.floaters.filter(f => f.life > 0);
     for (const m of this.messages) m.life -= dt;
@@ -398,13 +379,20 @@ class Race {
 
   render(ctx, opts = {}) {
     const tr = this.track;
+    const sh = this.shake && !opts.noOverlay ? this.shake : 0;
+    const jx = sh ? Math.round((Math.random() * 2 - 1) * sh) : 0, jy = sh ? Math.round((Math.random() * 2 - 1) * sh) : 0;
     if (View.fp) {
       ctx.fillStyle = '#0d0b10'; ctx.fillRect(0, 0, WORLD_W, WORLD_H);
+      ctx.save(); ctx.translate(jx, jy);
       Cockpit.render(ctx, this, opts.noHud ? 0 : 20);
+      ctx.restore();
+      Stadium.drawConfetti(ctx, this);
       if (!opts.noHud) this.drawHud(ctx);
       if (!opts.noOverlay) this.drawOverlays(ctx);
       return;
     }
+    ctx.save();
+    ctx.translate(jx, jy);
     ctx.drawImage(this.background(), 0, 0);
     // shimmering water
     const water = View.iso ? tr.isoWater : tr.waterPix;
@@ -416,6 +404,8 @@ class Race {
         ctx.fillRect(p % WORLD_W, (p / WORLD_W) | 0, 1, 1);
       }
     }
+    Stadium.drawCrowd(ctx, this);
+    Stadium.drawPennants(ctx, this);
     // pickups
     for (const p of this.pickups) {
       if (p.life < 2 && Math.floor(p.life * 8) % 2 === 0) continue;
@@ -426,11 +416,18 @@ class Race {
       ctx.fillRect(Math.round(sx - 3), Math.round(sy + 2), 7, 2);
       ctx.drawImage(spr, Math.round(sx - spr.width / 2), Math.round(sy - spr.height + 2 - bob));
     }
-    // ground particles under trucks
+    Stadium.drawFlagman(ctx, this);
+    FX.draw(ctx, this, true);
+    const sun = Mood.of(tr).sun;
     const sorted = this.trucks.slice().sort((a, b) => View.depth(a.x, a.y) - View.depth(b.x, b.y));
-    for (const p of this.particles) if (p.z < 3) this.drawParticle(ctx, p);
-    for (const t of sorted) t.draw(ctx, tr, this.time);
-    for (const p of this.particles) if (p.z >= 3) this.drawParticle(ctx, p);
+    for (const t of sorted) t.draw(ctx, tr, this.time, sun);
+    FX.draw(ctx, this, false);
+    Stadium.drawGantry(ctx, this);
+    // light: multiply the mood over the world, then add headlights at night
+    ctx.globalCompositeOperation = 'multiply';
+    ctx.drawImage(Mood.overlay(tr, View.mode), 0, 0);
+    ctx.globalCompositeOperation = 'source-over';
+    Mood.headlights(ctx, this);
 
     for (const f of this.floaters) {
       const [sx, sy] = View.point(f.x, f.y, tr.heightAt(f.x, f.y), 0);
@@ -448,42 +445,43 @@ class Race {
         }
       }
     }
+    ctx.restore();
+    Stadium.drawConfetti(ctx, this);
     if (!opts.noHud) this.drawHud(ctx);
     if (!opts.noOverlay) this.drawOverlays(ctx);
-  }
-
-  drawParticle(ctx, p) {
-    ctx.globalAlpha = p.dust ? Math.min(1, p.life * 2) * 0.8 : 1;
-    ctx.fillStyle = p.col;
-    const sz = p.dust ? 2 : 1;
-    const [sx, sy] = View.point(p.x, p.y, View.iso ? this.track.heightAt(p.x, p.y) : 0, p.z);
-    ctx.fillRect(Math.round(sx), Math.round(sy), sz, sz);
-    ctx.globalAlpha = 1;
   }
 
   drawHud(ctx) {
     ctx.fillStyle = '#0d0b10';
     ctx.fillRect(0, 0, WORLD_W, 20);
     const order = this.standings();
+    const total = (LAPS + 1) * this.track.N;
     for (const t of this.trucks) {
       const x = t.slot * 100;
+      const grad = ctx.createLinearGradient(0, 0, 0, 20);
+      grad.addColorStop(0, '#2a2532'); grad.addColorStop(1, '#17141c');
+      ctx.fillStyle = grad;
+      ctx.fillRect(x + 1, 0, 98, 19);
       ctx.fillStyle = t.def.hud;
       ctx.fillRect(x + 1, 0, 98, 1);
-      ctx.fillStyle = '#1d1a22';
-      ctx.fillRect(x + 1, 1, 98, 18);
+      drawTruckIcon(ctx, t.slot, x + 1, 2);
       const place = order.indexOf(t);
       const nm = t.human ? (this.numHumans === 2 ? `P${t.player + 1} ` : 'P1 ') + t.name : t.name;
-      Font.draw(ctx, nm, x + 4, 3, t.def.hud);
-      Font.draw(ctx, PLACE_NAMES[place], x + 96, 3, place === 0 ? '#fff27a' : '#ffffff', { align: 'right' });
+      Font.draw(ctx, nm, x + 21, 3, t.def.hud);
+      placeBadge(ctx, place, x + 97, 2);
       const lap = t.finished ? 'FIN' : `L${Math.max(1, Math.min(LAPS, t.crossings))}/${LAPS}`;
-      Font.draw(ctx, lap, x + 4, 11, '#cfc8d8');
-      ctx.drawImage(PICKUP_SPRITES.nitro, x + 32, 10, 5, 6);
-      Font.draw(ctx, String(t.nitros), x + 39, 11, '#ff8070');
+      Font.draw(ctx, lap, x + 21, 11, '#cfc8d8');
+      ctx.drawImage(PICKUP_SPRITES.nitro, x + 46, 10, 5, 6);
+      Font.draw(ctx, String(t.nitros), x + 53, 11, t.nitroT > 0 ? '#ffe070' : '#ff8070');
       if (t.human && this.opts.moneyOf) {
-        Font.draw(ctx, shortMoney(this.opts.moneyOf(t) + t.bagMoney), x + 96, 11, '#8cf07a', { align: 'right' });
+        Font.draw(ctx, shortMoney(this.opts.moneyOf(t) + t.bagMoney), x + 97, 11, '#8cf07a', { align: 'right' });
       } else if (!t.human) {
-        Font.draw(ctx, 'CPU', x + 96, 11, '#7a7486', { align: 'right' });
+        Font.draw(ctx, 'CPU', x + 97, 11, '#7a7486', { align: 'right' });
       }
+      // race progress
+      const prog = t.finished ? 1 : Math.max(0, Math.min(1, t.progress(this.track) / total));
+      ctx.fillStyle = '#0a080c'; ctx.fillRect(x + 1, 19, 98, 1);
+      ctx.fillStyle = t.def.hud; ctx.fillRect(x + 1, 19, Math.round(98 * prog), 1);
     }
   }
 
@@ -522,6 +520,22 @@ class Race {
       Font.draw(ctx, 'RACE OVER', cx, 150, '#ffffff', { align: 'center', scale: 3, shadow: '#000', shadowOffset: 2 });
     }
   }
+}
+
+// Small side-view of a truck for HUD rows and tables.
+function drawTruckIcon(ctx, slot, x, y) {
+  const spr = TruckSprites.get(slot, 'top', 2)[0];
+  ctx.drawImage(spr, 7, 8, 18, 17, x, y, 18, 17);
+}
+
+const BADGE = [['#ffd84a', '#4a3200'], ['#d8dae2', '#30323a'], ['#d8904a', '#3a1c00'], ['#4a4452', '#cfc8d8']];
+function placeBadge(ctx, place, right, y) {
+  const [bg, fg] = BADGE[place] || BADGE[3];
+  ctx.fillStyle = bg;
+  ctx.fillRect(right - 20, y, 20, 9);
+  ctx.fillStyle = 'rgba(255,255,255,0.35)';
+  ctx.fillRect(right - 20, y, 20, 1);
+  Font.draw(ctx, PLACE_NAMES[place], right - 10, y + 1, fg, { align: 'center' });
 }
 
 function panel(ctx, x, y, w, h) {

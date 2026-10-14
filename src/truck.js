@@ -24,67 +24,123 @@ const FP_PPU = 2.4; // first-person sprite pixels per world unit
 
 const TruckSprites = (() => {
   const cache = {};
+  const VARIANTS = 6; // 2 tread phases x 3 suspension heights
 
   function shadeColor(col, k) {
     return `rgb(${Math.min(255, col[0] * k) | 0},${Math.min(255, col[1] * k) | 0},${Math.min(255, col[2] * k) | 0})`;
   }
 
-  function render(color, angle, mode) {
+  // Stadium pickup in local units: x forward, y to the right, z up.
+  // Parts marked body ride on the suspension; wheels stay on the ground.
+  function model(color, bob) {
+    const body = color;
+    const dark = color.map(v => v * 0.5);
+    const light = color.map(v => Math.min(255, v * 1.25 + 30));
+    const contrast = (color[0] + color[1] + color[2]) / 3 > 150 ? [30, 30, 36] : [245, 245, 240];
+    const glass = [38, 52, 72];
+    const tire = [30, 28, 26];
+    const frame = [48, 46, 52];
+    const chrome = [205, 208, 214];
+    const cage = [60, 60, 68];
+    const parts = [];
+    const B = (x0, x1, y0, y1, z0, z1, col, opts = {}) => parts.push(Object.assign({ x0, x1, y0, y1, z0, z1, col }, opts));
+    const bodyB = (x0, x1, y0, y1, z0, z1, col, opts = {}) => B(x0, x1, y0, y1, z0 + bob, z1 + bob, col, opts);
+    // wheels with tread
+    for (const [x0, x1] of [[3.0, 7.4], [-7.4, -3.0]]) {
+      B(x0, x1, 3.7, 6.6, 0, 4.8, tire, { tire: true, side: 1 });
+      B(x0, x1, -6.6, -3.7, 0, 4.8, tire, { tire: true, side: -1 });
+    }
+    // frame and lower body
+    bodyB(-7.8, 7.6, -3.6, 3.6, 1.4, 3.0, frame);
+    bodyB(-8.4, -7.6, -3.7, 3.7, 1.8, 3.0, frame);                    // rear bumper
+    bodyB(7.4, 8.6, -3.5, 3.5, 1.8, 3.8, chrome);                     // front bumper / grille guard
+    // hood and engine
+    bodyB(2.6, 7.4, -3.9, 3.9, 3.0, 5.3, body);
+    bodyB(3.6, 5.8, -1.0, 1.0, 5.3, 6.0, dark);                       // hood scoop
+    bodyB(7.4, 7.7, -3.0, 3.0, 3.2, 4.8, [26, 26, 30]);               // grille
+    bodyB(7.4, 7.8, 2.2, 3.5, 4.0, 4.9, [255, 250, 220], { glow: true });  // headlights
+    bodyB(7.4, 7.8, -3.5, -2.2, 4.0, 4.9, [255, 250, 220], { glow: true });
+    // fenders over the wheels
+    for (const [x0, x1] of [[2.6, 7.8], [-7.8, -2.6]]) {
+      bodyB(x0, x1, 3.9, 5.5, 4.6, 5.4, body);
+      bodyB(x0, x1, -5.5, -3.9, 4.6, 5.4, body);
+    }
+    // cab: painted lower half, glass greenhouse, roof
+    bodyB(-2.4, 2.6, -3.8, 3.8, 3.0, 5.6, body);
+    bodyB(-2.0, 2.2, -3.4, 3.4, 5.6, 8.4, body, { glassSides: glass });
+    bodyB(-2.2, 2.0, -3.6, 3.6, 8.4, 9.0, body);
+    bodyB(-1.4, 0.6, -1.5, 1.5, 9.0, 9.06, [250, 250, 250]);          // roof number roundel
+    bodyB(-0.9, 0.1, -0.7, 0.7, 9.06, 9.1, [20, 20, 24]);
+    // light bar
+    bodyB(1.2, 2.0, -3.2, 3.2, 9.0, 9.7, [24, 24, 28]);
+    for (const y of [-2.4, -0.8, 0.8, 2.4]) bodyB(1.95, 2.15, y - 0.55, y + 0.55, 9.05, 9.65, [255, 220, 90], { glow: true });
+    // bed
+    bodyB(-7.8, -2.4, -3.9, 3.9, 3.0, 3.6, dark);
+    bodyB(-7.8, -2.4, 3.4, 3.9, 3.6, 5.4, body);
+    bodyB(-7.8, -2.4, -3.9, -3.4, 3.6, 5.4, body);
+    bodyB(-7.8, -7.3, -3.4, 3.4, 3.6, 5.2, dark);                      // tailgate
+    bodyB(-8.2, -7.8, 2.4, 3.8, 3.9, 5.0, [255, 36, 28], { glow: true }); // tail lights
+    bodyB(-8.2, -7.8, -3.8, -2.4, 3.9, 5.0, [255, 36, 28], { glow: true });
+    // roll cage over the bed
+    bodyB(-3.0, -2.5, 2.8, 3.3, 5.4, 8.6, cage);
+    bodyB(-3.0, -2.5, -3.3, -2.8, 5.4, 8.6, cage);
+    bodyB(-3.1, -2.4, -3.3, 3.3, 8.1, 8.7, cage);
+    bodyB(-7.2, -3.0, 2.8, 3.3, 6.9, 7.4, cage);
+    bodyB(-7.2, -3.0, -3.3, -2.8, 6.9, 7.4, cage);
+    bodyB(-7.3, -6.8, 2.8, 3.3, 5.4, 7.4, cage);
+    bodyB(-7.3, -6.8, -3.3, -2.8, 5.4, 7.4, cage);
+    // sponsor stripe along both sides, mud flaps
+    bodyB(-7.8, 7.4, 3.9, 4.0, 3.9, 4.5, contrast);
+    bodyB(-7.8, 7.4, -4.0, -3.9, 3.9, 4.5, contrast);
+    bodyB(-2.0, 2.6, 3.8, 3.9, 3.2, 5.2, light);                      // door panel
+    bodyB(-2.0, 2.6, -3.9, -3.8, 3.2, 5.2, light);
+    B(-7.9, -7.6, 3.8, 6.4, 0.6 + bob * 0.5, 3.6 + bob, [20, 20, 22]);
+    B(-7.9, -7.6, -6.4, -3.8, 0.6 + bob * 0.5, 3.6 + bob, [20, 20, 22]);
+    return parts;
+  }
+
+  function render(color, angle, mode, variant) {
     const iso = mode === 'iso', fp = mode === 'fp';
-    const SIZE = fp ? 56 : iso ? 36 : SPRITE_SIZE;
+    const SIZE = fp ? 60 : iso ? 38 : 32;
     const c = document.createElement('canvas');
     c.width = SIZE; c.height = SIZE;
     const g = c.getContext('2d');
     const ca = Math.cos(angle), sa = Math.sin(angle);
-    const ox = SIZE / 2, oy = fp ? 42 : iso ? 22 : SPRITE_CY;
+    const ox = SIZE / 2, oy = fp ? 46 : iso ? 24 : 20;
     c.ox = ox; c.oy = oy;
     c.ppu = fp ? FP_PPU : 1;
     const I = View.ISO, S = I.truckScale;
+    const phase = variant % 2;
+    const bob = [-0.7, 0, 0.8][Math.floor(variant / 2)];
     // first person: camera looks along +X from slightly above
     const EL = 0.2, cosE = Math.cos(EL), sinE = Math.sin(EL);
+    const rot = (x, y) => [x * ca - y * sa, x * sa + y * ca];
     const proj = fp
-      ? (x, y, z) => {
-        const X = x * ca - y * sa, Y = x * sa + y * ca;
-        return [ox + Y * FP_PPU, oy - z * cosE * FP_PPU - X * sinE * FP_PPU];
-      }
+      ? (x, y, z) => { const [X, Y] = rot(x, y); return [ox + Y * FP_PPU, oy - z * cosE * FP_PPU - X * sinE * FP_PPU]; }
       : iso
-      ? (x, y, z) => {
-        const X = x * ca - y * sa, Y = x * sa + y * ca;
-        return [ox + (X - Y) * I.a * S, oy + (X + Y) * I.b * S - z * 0.78 * S];
-      }
-      : (x, y, z) => {
-        const X = x * ca - y * sa, Y = x * sa + y * ca;
-        return [ox + X, oy + Y * 0.8 - z * 0.95];
-      };
+        ? (x, y, z) => { const [X, Y] = rot(x, y); return [ox + (X - Y) * I.a * S, oy + (X + Y) * I.b * S - z * 0.78 * S]; }
+        : (x, y, z) => { const [X, Y] = rot(x, y); return [ox + X, oy + Y * 0.8 - z * 0.95]; };
     // which way faces the camera, in world x/y
     const toCam = fp ? [-1, 0] : iso ? [0.7071, 0.7071] : [0, 1];
-    const body = color;
-    const dark = [color[0] * 0.55, color[1] * 0.55, color[2] * 0.55];
-    const glass = [40, 52, 70];
-    const tire = [34, 32, 30];
-    const chrome = [210, 210, 215];
-    const boxes = [
-      { x0: -7.5, x1: 7, y0: -4, y1: 4, z0: 2, z1: 5, col: body },
-      { x0: -2.5, x1: 2.8, y0: -3.5, y1: 3.5, z0: 5, z1: 9, col: body, side: glass },
-      { x0: -7.5, x1: -6.5, y0: -4, y1: 4, z0: 5, z1: 7, col: dark },
-      { x0: 7, x1: 8.2, y0: -3.2, y1: 3.2, z0: 2, z1: 4, col: chrome },
-      { x0: -8.1, x1: -7.5, y0: 2.2, y1: 3.8, z0: 3.4, z1: 4.6, col: [255, 40, 30] },
-      { x0: -8.1, x1: -7.5, y0: -3.8, y1: -2.2, z0: 3.4, z1: 4.6, col: [255, 40, 30] },
-      { x0: -8.3, x1: -7.5, y0: -3.6, y1: 3.6, z0: 1.6, z1: 2.8, col: [60, 58, 64] },
-      { x0: 3, x1: 7.2, y0: 3.6, y1: 6.2, z0: 0, z1: 4.5, col: tire },
-      { x0: 3, x1: 7.2, y0: -6.2, y1: -3.6, z0: 0, z1: 4.5, col: tire },
-      { x0: -7, x1: -2.8, y0: 3.6, y1: 6.2, z0: 0, z1: 4.5, col: tire },
-      { x0: -7, x1: -2.8, y0: -6.2, y1: -3.6, z0: 0, z1: 4.5, col: tire },
-    ];
     const L = fp ? [-0.6, 0.35, 0.72] : iso ? [-0.25, 0.45, 0.86] : [-0.35, -0.3, 0.88];
     const light = (nx, ny, nz) => 0.42 + 0.62 * Math.max(0, nx * L[0] + ny * L[1] + nz * L[2]);
-    const keyed = boxes.map(b => {
-      const cx = (b.x0 + b.x1) / 2, cy = (b.y0 + b.y1) / 2;
-      const X = cx * ca - cy * sa, Y = cx * sa + cy * ca;
+    const parts = model(color, bob).map(b => {
+      const [X, Y] = rot((b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2);
       return { b, key: X * toCam[0] + Y * toCam[1] + b.z0 * 0.45 };
     }).sort((a, b) => a.key - b.key);
 
-    for (const { b } of keyed) {
+    const fillQuad = (q, style) => {
+      g.fillStyle = style;
+      g.beginPath(); q.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); g.closePath(); g.fill();
+    };
+    const lerp = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+    const line = (a, b, style, w) => {
+      g.strokeStyle = style; g.lineWidth = w;
+      g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.stroke();
+    };
+    const lw = fp ? 1.3 : 0.8;
+
+    for (const { b } of parts) {
       const faces = [
         { n: [1, 0], pts: [[b.x1, b.y0], [b.x1, b.y1]] },
         { n: [-1, 0], pts: [[b.x0, b.y1], [b.x0, b.y0]] },
@@ -92,23 +148,46 @@ const TruckSprites = (() => {
         { n: [0, -1], pts: [[b.x0, b.y0], [b.x1, b.y0]] },
       ];
       for (const f of faces) {
-        const wx = f.n[0] * ca - f.n[1] * sa, wy = f.n[0] * sa + f.n[1] * ca;
+        const [wx, wy] = rot(f.n[0], f.n[1]);
         if (wx * toCam[0] + wy * toCam[1] <= 0.02) continue;
         const [a, bb] = f.pts;
         const q = [proj(a[0], a[1], b.z0), proj(bb[0], bb[1], b.z0), proj(bb[0], bb[1], b.z1), proj(a[0], a[1], b.z1)];
-        let col = b.side || b.col;
-        if (b.side && f.n[0] === -1) col = b.col; // rear of cab is painted
-        g.fillStyle = shadeColor(col, light(wx, wy, 0));
-        g.beginPath(); q.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); g.closePath(); g.fill();
+        let col = b.col;
+        if (b.glassSides && f.n[0] !== -1) col = b.glassSides; // windshield and side windows; rear wall is painted
+        const k = b.glow ? 1.15 : light(wx, wy, 0);
+        fillQuad(q, shadeColor(col, k));
+        if (b.glassSides && f.n[0] !== -1) {
+          // window frame and a glint
+          line(lerp(q[3], q[2], 0.1), lerp(q[0], q[1], 0.1), 'rgba(255,255,255,0.25)', lw);
+        }
+        if (b.tire) {
+          if (f.n[0] !== 0) {
+            // tread blocks across the rolling face
+            for (const t of [0.2, 0.45, 0.7, 0.95]) {
+              const tt = (t + phase * 0.125) % 1;
+              line(lerp(q[0], q[3], tt), lerp(q[1], q[2], tt), 'rgba(0,0,0,0.6)', lw);
+            }
+          } else if (f.n[1] === b.side) {
+            // outer sidewall: rim and a lug that moves with the tread phase
+            const hub = [lerp(lerp(q[0], q[1], 0.3), lerp(q[3], q[2], 0.3), 0.3), lerp(lerp(q[0], q[1], 0.7), lerp(q[3], q[2], 0.7), 0.3),
+              lerp(lerp(q[0], q[1], 0.7), lerp(q[3], q[2], 0.7), 0.7), lerp(lerp(q[0], q[1], 0.3), lerp(q[3], q[2], 0.3), 0.7)];
+            fillQuad(hub, shadeColor([170, 172, 180], k));
+            const lug = phase ? lerp(lerp(hub[0], hub[1], 0.5), lerp(hub[3], hub[2], 0.5), 0.2) : lerp(lerp(hub[0], hub[1], 0.5), lerp(hub[3], hub[2], 0.5), 0.8);
+            g.fillStyle = '#222'; g.fillRect(lug[0] - 0.6, lug[1] - 0.6, 1.2, 1.2);
+          }
+        }
       }
       const top = [proj(b.x0, b.y0, b.z1), proj(b.x1, b.y0, b.z1), proj(b.x1, b.y1, b.z1), proj(b.x0, b.y1, b.z1)];
-      g.fillStyle = shadeColor(b.col, light(0, 0, 1));
-      g.beginPath(); top.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); g.closePath(); g.fill();
+      fillQuad(top, shadeColor(b.col, b.glow ? 1.2 : light(0, 0, 1)));
+      if (b.tire) {
+        for (const t of [0.15, 0.4, 0.65, 0.9]) {
+          const tt = (t + phase * 0.125) % 1;
+          line(lerp(top[0], top[1], tt), lerp(top[3], top[2], tt), 'rgba(0,0,0,0.55)', lw);
+        }
+      }
     }
-    // racing stripe on the hood
-    const s1 = proj(3.5, 0, 5.05), s2 = proj(6.8, 0, 5.05);
-    g.strokeStyle = 'rgba(255,255,255,0.85)'; g.lineWidth = 1.2;
-    g.beginPath(); g.moveTo(s1[0], s1[1]); g.lineTo(s2[0], s2[1]); g.stroke();
+    // hood stripe
+    line(proj(3.0, 0, 5.32 + bob), proj(7.3, 0, 5.32 + bob), 'rgba(255,255,255,0.8)', fp ? 1.6 : 1);
 
     // crisp pixels: hard alpha, then a dark outline
     const im = g.getImageData(0, 0, SIZE, SIZE);
@@ -133,30 +212,34 @@ const TruckSprites = (() => {
     return c;
   }
 
-  function get(slot, mode = View.mode) {
-    const key = slot + mode;
+  // variant: tread phase (0/1) + 2 * suspension (0 compressed, 1 normal, 2 extended)
+  function get(slot, mode = View.mode, variant = 2) {
+    const key = slot + mode + variant;
     if (!cache[key]) {
       const col = TRUCK_DEFS[slot].color;
-      cache[key] = Array.from({ length: SPRITE_STEPS }, (_, i) => render(col, (i / SPRITE_STEPS) * Math.PI * 2, mode));
+      cache[key] = Array.from({ length: SPRITE_STEPS }, (_, i) => render(col, (i / SPRITE_STEPS) * Math.PI * 2, mode, variant));
     }
     return cache[key];
   }
 
-  let shadow = null;
-  function getShadow() {
-    if (shadow) return shadow;
-    shadow = document.createElement('canvas');
-    shadow.width = 20; shadow.height = 12;
-    const g = shadow.getContext('2d');
-    g.fillStyle = 'rgba(0,0,0,0.38)';
-    for (let y = 0; y < 12; y++) for (let x = 0; x < 20; x++) {
-      const dx = (x + 0.5 - 10) / 9, dy = (y + 0.5 - 6) / 5;
-      if (dx * dx + dy * dy <= 1) g.fillRect(x, y, 1, 1);
-    }
-    return shadow;
+  // Footprint shadow cast along the sun direction.
+  function drawShadow(ctx, t, track, sun) {
+    const gh = track.heightAt(t.x, t.y);
+    const lift = Math.max(0, t.z - gh) * 1.5;
+    const c = Math.cos(t.h), s = Math.sin(t.h);
+    const off = 4 + lift;
+    const dx = sun[0] * off, dy = sun[1] * off;
+    const corners = [[8.4, 6.4], [8.4, -6.4], [-8.4, -6.4], [-8.4, 6.4]].map(([x, y]) =>
+      View.point(t.x + x * c - y * s + dx * 0.5, t.y + x * s + y * c + dy * 0.5, gh, 0));
+    const a = Math.max(0.12, 0.38 - lift * 0.01) * (sun[2] == null ? 1 : sun[2]);
+    ctx.fillStyle = `rgba(10,6,4,${a})`;
+    ctx.beginPath();
+    corners.forEach((p, i) => i ? ctx.lineTo(Math.round(p[0]), Math.round(p[1])) : ctx.moveTo(Math.round(p[0]), Math.round(p[1])));
+    ctx.closePath();
+    ctx.fill();
   }
 
-  return { get, getShadow };
+  return { get, drawShadow, VARIANTS };
 })();
 
 class Truck {
@@ -323,27 +406,27 @@ class Truck {
 
   progress(track) { return this.crossings * track.N + this.idx; }
 
-  draw(ctx, track, t) {
+  // Which pre-rendered variant fits right now: wheels roll, suspension squats or hangs.
+  spriteVariant(t) {
+    this.treadT = (this.treadT || 0) + Math.abs(this.forward) * 0.02;
+    const phase = Math.floor(this.treadT) % 2;
+    let susp = 1;
+    if (this.air) susp = 2;
+    else if (this.bumpT > 0.05 || this.squatT > 0) susp = 0;
+    return phase + susp * 2;
+  }
+
+  draw(ctx, track, t, sun) {
     const gh = track.heightAt(this.x, this.y);
     const lift = Math.max(0, this.z - gh) * 1.5;
-    const sh = TruckSprites.getShadow();
-    const [gx, gy] = View.point(this.x, this.y, gh, 0);
-    ctx.drawImage(sh, Math.round(gx - 10 + lift * 0.35), Math.round(gy - 5 + lift * 0.4));
+    TruckSprites.drawShadow(ctx, this, track, sun || [0.5, 0.6]);
     const a = this.h / (Math.PI * 2) * SPRITE_STEPS;
     let fi = Math.round(a) % SPRITE_STEPS;
     if (fi < 0) fi += SPRITE_STEPS;
-    const bob = (!this.air && this.speed > 20 && track.surfAt(this.x, this.y) !== SURF.DIRT) ? ((t * 20 | 0) % 2) : 0;
-    const spr = TruckSprites.get(this.slot)[fi];
+    const surf = track.surfAt(this.x, this.y);
+    const bob = (!this.air && this.speed > 20 && surf !== SURF.DIRT) ? ((t * 20 | 0) % 2) : 0;
+    const spr = TruckSprites.get(this.slot, View.mode, this.spriteVariant(t))[fi];
     const [px, py] = View.point(this.x, this.y, gh, lift + bob);
-    if (this.nitroT > 0) {
-      const c = Math.cos(this.h), s = Math.sin(this.h);
-      for (let k = 0; k < 4; k++) {
-        const back = 9 + k * 2 + Math.random() * 2;
-        const [fx, fy] = View.point(this.x - c * back, this.y - s * back, gh, lift + 3);
-        ctx.fillStyle = k < 1 ? '#fff6c0' : k < 2 ? '#ffd040' : k < 3 ? '#ff8a20' : '#d03010';
-        ctx.fillRect(Math.round(fx + (Math.random() - 0.5) * 2), Math.round(fy + (Math.random() - 0.5) * 2), 2, 2);
-      }
-    }
     ctx.drawImage(spr, Math.round(px - spr.ox), Math.round(py - spr.oy));
   }
 }

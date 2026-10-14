@@ -12,7 +12,8 @@ const Cockpit = (() => {
   const TAN = Math.tan(FOV / 2);
 
   const pack = (r, g, b) => (255 << 24) | ((b & 255) << 16) | ((g & 255) << 8) | (r & 255);
-  const FOG = [26, 20, 38];
+  let FOG = [26, 20, 38];   // set per track from its lighting mood
+  let MOOD = MOODS.night, TIME = 0;
   const CROWD = [[220, 70, 60], [240, 220, 190], [70, 110, 200], [250, 200, 60], [60, 150, 80], [200, 200, 210], [150, 90, 60]];
 
   // ---- per-size view buffers ----
@@ -46,6 +47,12 @@ const Cockpit = (() => {
     }
     if (!race.fpColors || race.time - race.fpColorsT > 1) {
       const d = race.bgCtx.getImageData(0, 0, WORLD_W, WORLD_H).data;
+      const L = Mood.lightMap(tr);
+      for (let p = 0, n = WORLD_W * WORLD_H; p < n; p++) {
+        d[p * 4] = Math.min(255, d[p * 4] * L[p * 3]);
+        d[p * 4 + 1] = Math.min(255, d[p * 4 + 1] * L[p * 3 + 1]);
+        d[p * 4 + 2] = Math.min(255, d[p * 4 + 2] * L[p * 3 + 2]);
+      }
       race.fpColors = new Uint32Array(d.buffer);
       race.fpColorsT = race.time;
     }
@@ -64,12 +71,15 @@ const Cockpit = (() => {
       const seg = Math.floor(along / 24) % 3;
       [r, g, b] = seg === 0 ? [200, 40, 30] : seg === 1 ? [240, 200, 40] : [30, 70, 170];
       if (hw > 6.5 && hw < 7.5 && Math.floor(along / 3) % 2) { r = 250; g = 250; b = 240; }
-    } else if (hw < WALL_H - 3) {                                        // crowd tiers
-      const tier = Math.floor(hw / 3);
-      if (Math.floor(hw) % 3 === 0) { r = 40; g = 38; b = 46; }
+    } else if (hw < WALL_H - 3) {                                        // crowd tiers, some fans jumping
+      const cell = Math.floor(along / 1.5);
+      const jump = hash2(cell, Math.floor(TIME * 6), 13) > 0.86 ? 1 : 0;
+      const h2 = hw - jump;
+      const tier = Math.floor(h2 / 3);
+      if (Math.floor(h2) % 3 === 0) { r = 40; g = 38; b = 46; }
       else {
-        const col = CROWD[Math.floor(hash2(Math.floor(along / 1.5), tier, 77) * CROWD.length)];
-        const k = 0.55 + 0.45 * (hw / WALL_H);
+        const col = CROWD[Math.floor(hash2(cell, tier, 77) * CROWD.length)];
+        const k = (0.55 + 0.45 * (hw / WALL_H)) * MOOD.crowdLight;
         r = col[0] * k; g = col[1] * k; b = col[2] * k;
       }
     } else { r = 200; g = 200; b = 210; }                                // rail
@@ -93,12 +103,14 @@ const Cockpit = (() => {
   function drawTerrain(v, cam, td) {
     const { buf, depth } = v;
     const W = cam.w, H = cam.h;
+    const [s0, s1] = MOOD.sky;
     for (let y = 0; y < H; y++) {
-      const idx = Math.max(0, Math.min(v.sky.length - 1, y - cam.horizon + H));
-      buf.fill(v.sky[Math.min(v.sky.length - 1, Math.max(0, idx - H + H))], y * W, (y + 1) * W);
+      const t = Math.max(0, Math.min(1, (y - (cam.horizon - H * 0.9)) / (H * 0.9)));
+      buf.fill(pack(s0[0] + (s1[0] - s0[0]) * t, s0[1] + (s1[1] - s0[1]) * t, s0[2] + (s1[2] - s0[2]) * t), y * W, (y + 1) * W);
     }
     depth.fill(Infinity);
-    drawStars(v, cam);
+    if (MOOD.stars) drawStars(v, cam);
+    drawSun(v, cam);
     const WW = WORLD_W, WH = WORLD_H;
     for (let i = 0; i < W; i++) {
       const t = (i + 0.5 - cam.cx) / cam.focal;
@@ -146,6 +158,29 @@ const Cockpit = (() => {
     }
   }
 
+  // Sun disk: sits opposite to where shadows point.
+  function drawSun(v, cam) {
+    if (MOOD === MOODS.night) return;
+    const bearing = Math.atan2(-MOOD.sun[1], -MOOD.sun[0]);
+    let a = bearing - cam.heading;
+    a = Math.atan2(Math.sin(a), Math.cos(a));
+    if (Math.abs(a) > 0.9) return;
+    const cx = cam.cx + Math.tan(a) * cam.focal;
+    const cy = MOOD.sunDisk ? cam.horizon - cam.h * 0.08 : cam.horizon - cam.h * 0.42;
+    const R = cam.h * (MOOD.sunDisk ? 0.09 : 0.05);
+    const core = MOOD.sunDisk ? [255, 220, 120] : [255, 252, 230];
+    for (let y = Math.max(0, Math.floor(cy - R * 3)); y < Math.min(cam.h, cy + R * 3); y++) {
+      for (let x = Math.max(0, Math.floor(cx - R * 3)); x < Math.min(cam.w, cx + R * 3); x++) {
+        const d = Math.hypot(x - cx, y - cy) / R;
+        const i = y * cam.w + x, c = v.buf[i];
+        const k = d < 1 ? 1 : Math.max(0, 0.45 * (1 - (d - 1) / 2));
+        if (k <= 0) continue;
+        const r = c & 255, g = (c >> 8) & 255, b = (c >> 16) & 255;
+        v.buf[i] = pack(r + (core[0] - r) * k, g + (core[1] - g) * k, b + (core[2] - b) * k);
+      }
+    }
+  }
+
   // ---- billboards with depth test ----
   function project(cam, wx, wy, wz) {
     const dx = wx - cam.x, dy = wy - cam.y;
@@ -155,7 +190,8 @@ const Cockpit = (() => {
     return { fwd, sx: cam.cx + lat / fwd * cam.focal, sy: cam.horizon + (cam.eye - wz) * cam.focal / fwd };
   }
 
-  function blit(v, cam, spr, px, pw, ph, ox, oy, ppu, p) {
+  function blit(v, cam, spr, px, pw, ph, ox, oy, ppu, p, tint) {
+    const tr = tint ? tint[0] : 1, tg = tint ? tint[1] : 1, tb = tint ? tint[2] : 1;
     const scale = cam.focal / p.fwd / ppu; // screen px per sprite px
     const x0 = p.sx - ox * scale, y0 = p.sy - oy * scale;
     const xa = Math.max(0, Math.floor(x0)), xb = Math.min(cam.w, Math.ceil(x0 + pw * scale));
@@ -171,7 +207,8 @@ const Cockpit = (() => {
         if ((c >>> 24) < 128) continue;
         const di = y * cam.w + x;
         if (v.depth[di] <= p.fwd) continue;
-        v.buf[di] = fogMix(c, Math.min(0.6, Math.pow(p.fwd / FAR, 1.4) * 0.9));
+        const lit = tint ? pack(Math.min(255, (c & 255) * tr), Math.min(255, ((c >> 8) & 255) * tg), Math.min(255, ((c >> 16) & 255) * tb)) : c;
+        v.buf[di] = fogMix(lit, Math.min(0.6, Math.pow(p.fwd / FAR, 1.4) * 0.9));
         v.depth[di] = p.fwd;
       }
     }
@@ -186,6 +223,21 @@ const Cockpit = (() => {
       const di = y * cam.w + x;
       if (v.depth[di] <= p.fwd) continue;
       v.buf[di] = color; v.depth[di] = p.fwd;
+    }
+  }
+
+  // translucent rect: depth-tested, does not occlude what is behind it
+  function blend(v, cam, p, wW, wH, rgb, a, centered, maxPx = 1e9) {
+    const s = cam.focal / p.fwd;
+    const w = Math.max(1, Math.min(maxPx, wW * s)), h = Math.max(1, Math.min(maxPx, wH * s));
+    const xa = Math.max(0, Math.round(p.sx - w / 2)), xb = Math.min(cam.w, Math.round(p.sx + w / 2));
+    const y0 = centered ? p.sy - h / 2 : p.sy - h;
+    const ya = Math.max(0, Math.round(y0)), yb = Math.min(cam.h, Math.round(y0 + h));
+    for (let y = ya; y < Math.max(yb, ya + 1) && y < cam.h; y++) for (let x = xa; x < Math.max(xb, xa + 1) && x < cam.w; x++) {
+      const di = y * cam.w + x;
+      if (v.depth[di] <= p.fwd) continue;
+      const c = v.buf[di], r = c & 255, g = (c >> 8) & 255, b = (c >> 16) & 255;
+      v.buf[di] = pack(r + (rgb[0] - r) * a, g + (rgb[1] - g) * a, b + (rgb[2] - b) * a);
     }
   }
 
@@ -210,7 +262,28 @@ const Cockpit = (() => {
       if (!pb) continue;
       rect(v, cam, pb, 2.5, 95, POLE);
       const ph = project(cam, lx, ly, 104);
-      if (ph) { rect(v, cam, ph, 16, 9, LAMP2); rect(v, cam, Object.assign({}, ph, { sy: ph.sy - 2 * cam.focal / ph.fwd }), 13, 5, LAMP); }
+      if (!ph) continue;
+      if (MOOD.lamps) {
+        blend(v, cam, Object.assign({}, ph, { sy: ph.sy + 4 * cam.focal / ph.fwd }), 44, 26, [255, 240, 200], 0.35);
+        rect(v, cam, ph, 16, 9, LAMP2); rect(v, cam, Object.assign({}, ph, { sy: ph.sy - 2 * cam.focal / ph.fwd }), 13, 5, LAMP);
+      } else rect(v, cam, ph, 16, 9, pack(90, 92, 100));
+    }
+    // start/finish gantry and the flagman
+    for (const [gx, gy] of tr.gantry) {
+      const pb = project(cam, gx, gy, tr.heightAt(gx, gy) * HS);
+      if (pb) rect(v, cam, pb, 1.6, Stadium.GANTRY_H, pack(50, 50, 58));
+    }
+    {
+      const [a, b] = tr.gantry;
+      const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2;
+      const p = project(cam, mx, my, tr.heightAt(mx, my) * HS + Stadium.GANTRY_H + 1);
+      const ban = Stadium.bannerFor(race);
+      if (p) blit(v, cam, ban, ban.px, ban.width, ban.height, ban.width / 2, ban.height, ban.width / (tr.halfW * 2 + 6), p, Mood.lightAt(tr, mx, my));
+    }
+    if (tr.flagman) {
+      const fm = tr.flagman, spr = Stadium.flagmanSprite(race);
+      const p = project(cam, fm.x, fm.y, tr.heightAt(fm.x, fm.y) * HS);
+      if (p) blit(v, cam, spr, spr.px, spr.width, spr.height, spr.ox, spr.oy, 1.7, p, Mood.lightAt(tr, fm.x, fm.y));
     }
     // pickups
     for (const pk of race.pickups) {
@@ -218,7 +291,7 @@ const Cockpit = (() => {
       const spr = PICKUP_SPRITES[pk.type];
       const gh = tr.heightAt(pk.x, pk.y) * HS;
       const p = project(cam, pk.x, pk.y, gh + Math.sin(race.time * 6 + pk.x) * 0.6);
-      if (p) blit(v, cam, spr, pixelsOf(spr), spr.width, spr.height, spr.width / 2, spr.height, 1.3, p);
+      if (p) blit(v, cam, spr, pixelsOf(spr), spr.width, spr.height, spr.width / 2, spr.height, 1.3, p, Mood.lightAt(tr, pk.x, pk.y));
     }
     // trucks
     for (const t of race.trucks) {
@@ -231,23 +304,28 @@ const Cockpit = (() => {
       let rel = (t.h - bearing) / (Math.PI * 2) * SPRITE_STEPS;
       let fi = Math.round(rel) % SPRITE_STEPS;
       if (fi < 0) fi += SPRITE_STEPS;
-      const spr = TruckSprites.get(t.slot, 'fp')[fi];
-      // shadow on the ground
-      const ps = project(cam, t.x, t.y, gh * HS);
-      if (ps && lift > 1) rect(v, cam, ps, 12, 1.5, pack(20, 14, 10));
-      blit(v, cam, spr, spr.px, spr.width, spr.height, spr.ox, spr.oy, FP_PPU, p);
-      if (t.nitroT > 0) {
-        const pf = project(cam, t.x - Math.cos(t.h) * 10, t.y - Math.sin(t.h) * 10, (gh + lift) * HS + 4);
-        if (pf) rect(v, cam, pf, 3 + Math.random() * 2, 3, Math.random() < 0.5 ? pack(255, 210, 60) : pack(255, 120, 30));
-      }
+      const spr = TruckSprites.get(t.slot, 'fp', t.spriteVariant(race.time))[fi];
+      // contact shadow on the ground
+      const ps = project(cam, t.x + MOOD.sun[0] * 2, t.y + MOOD.sun[1] * 2, gh * HS);
+      if (ps) blend(v, cam, ps, 14, 1.4, [10, 6, 4], 0.45);
+      blit(v, cam, spr, spr.px, spr.width, spr.height, spr.ox, spr.oy, FP_PPU, p, Mood.lightAt(tr, t.x, t.y));
     }
     // particles
     for (const pt of race.particles) {
+      if (pt.k === 'ring') continue;
       const gh = tr.heightAt(pt.x, pt.y);
-      const p = project(cam, pt.x, pt.y, (gh + pt.z) * HS);
-      if (!p || p.fwd > 160 || p.fwd < 10) continue;
-      const c = pt.col;
-      rect(v, cam, p, pt.dust ? 2.4 : 1.2, pt.dust ? 2.4 : 1.2, pack(parseInt(c.substr(1, 2), 16), parseInt(c.substr(3, 2), 16), parseInt(c.substr(5, 2), 16)));
+      const p = project(cam, pt.x, pt.y, gh * HS + pt.z);
+      if (!p || p.fwd > 200 || p.fwd < 6) continue;
+      const f = pt.age / pt.life;
+      if (pt.k === 'puff') {
+        const r = pt.r0 + (pt.r1 - pt.r0) * Math.sqrt(f);
+        // clouds right in front of the windshield fade instead of filling the view
+        const near = Math.min(1, Math.max(0, (p.fwd - 14) / 30));
+        if (near > 0) blend(v, cam, p, r * 2, r * 1.6, pt.rgb, pt.a0 * (1 - f) * 0.8 * near, true, 70);
+      } else if (pt.k === 'flame' || pt.k === 'spark') {
+        const col = pt.k === 'spark' ? pt.rgb : f < 0.3 ? [255, 246, 208] : f < 0.6 ? [255, 208, 64] : [255, 128, 32];
+        rect(v, cam, p, pt.k === 'flame' ? 2.2 : 0.8, pt.k === 'flame' ? 2.2 : 0.8, pack(col[0], col[1], col[2]));
+      } else rect(v, cam, p, 1.4, 1.4, pack(pt.rgb[0], pt.rgb[1], pt.rgb[2]));
     }
   }
 
@@ -395,12 +473,25 @@ const Cockpit = (() => {
 
   // ---- public ----
   function renderView(ctx, race, t, X, Y, W, H, label) {
+    MOOD = Mood.of(race.track); FOG = MOOD.fog; TIME = race.time;
     const v = viewBuf(W, H);
     const cam = camera(t, W, H);
     drawTerrain(v, cam, terrain(race));
     drawObjects(v, cam, race, t);
     v.g.putImageData(v.img, 0, 0);
     ctx.drawImage(v.canvas, X, Y);
+    if (MOOD.lamps) {
+      // own headlights on the road ahead
+      ctx.save();
+      ctx.beginPath(); ctx.rect(X, Y, W, H); ctx.clip();
+      ctx.globalCompositeOperation = 'lighter';
+      const hx = X + W / 2, hy = Y + cam.horizon + (H - cam.horizon) * 0.45;
+      const gr = ctx.createRadialGradient(hx, hy, 4, hx, hy, W * 0.45);
+      gr.addColorStop(0, 'rgba(255,236,180,0.32)'); gr.addColorStop(1, 'rgba(255,236,180,0)');
+      ctx.fillStyle = gr;
+      ctx.fillRect(X, Y + cam.horizon, W, H - cam.horizon);
+      ctx.restore();
+    }
     drawCockpit(ctx, race, t, X, Y, W, H, label);
   }
 
