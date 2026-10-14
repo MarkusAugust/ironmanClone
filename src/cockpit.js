@@ -82,33 +82,66 @@ const Cockpit = (() => {
     return { h: tr.fpHeightsUp, c: race.fpColorsUp };
   }
 
-  // Seen from the road below (or from afar), the deck is a ceiling: cast rays
-  // above the horizon onto the plane of its underside.
-  function drawDeckUndersides(v, cam, race) {
+  // Seen from the road below (or from afar), the bridge is a floating slab:
+  // march each screen column through the deck footprint and draw, front to
+  // back, its side (girder and red/white railing), underside and top.
+  function drawDeckSlabs(v, cam, race) {
     const tr = race.track;
     if (!tr.crossings.length) return;
-    const W = cam.w, top = Math.min(cam.h, cam.horizon);
+    const W = cam.w, H = cam.h, FW = WORLD_W * RES;
     for (const c of tr.crossings) {
       const D = tr.deckInfo(c);
-      const under = (c.BH - 2.5) * HS;
-      if (under <= cam.eye) continue;
       const L = Mood.lightAt(tr, c.x, c.y);
-      for (let y = 0; y < top; y++) {
-        const z = (under - cam.eye) * cam.focal / (cam.horizon - y + 0.5);
-        if (z > FAR || z < 1) continue;
-        const f = Math.min(0.75, Math.pow(z / FAR, 1.4) * 0.9);
-        for (let i = 0; i < W; i++) {
-          const t = (i + 0.5 - cam.cx) / cam.focal;
-          const px = cam.x + (cam.fx + cam.rx * t) * z, py = cam.y + (cam.fy + cam.ry * t) * z;
-          if (px < 0 || py < 0 || px >= WORLD_W || py >= WORLD_H) continue;
-          if (!D.maskW[(py | 0) * WORLD_W + (px | 0)]) continue;
-          const di = y * W + i;
-          if (v.depth[di] <= z) continue;
-          // steel beams across the underside
-          const beam = Math.floor((D.srF[((py * RES) | 0) * WORLD_W * RES + ((px * RES) | 0)] + 200) / 4) % 2 === 0;
-          const k = beam ? 0.7 : 1;
-          v.buf[di] = fogMix(pack(84 * k * L[0], 74 * k * L[1], 64 * k * L[2]), f);
-          v.depth[di] = z;
+      const deckH = c.BH * HS, railH = (c.BH + 2.5) * HS, underH = (c.BH - 2.5) * HS;
+      const R = c.D + tr.halfW + 4;
+      const ox = cam.x - c.x, oy = cam.y - c.y;
+      for (let i = 0; i < W; i++) {
+        const t = (i + 0.5 - cam.cx) / cam.focal;
+        const dx = cam.fx + cam.rx * t, dy = cam.fy + cam.ry * t;
+        // ray against the footprint's bounding circle
+        const A = dx * dx + dy * dy, B = ox * dx + oy * dy, C = ox * ox + oy * oy - R * R;
+        const disc = B * B - A * C;
+        if (disc <= 0) continue;
+        const sq = Math.sqrt(disc);
+        let z = Math.max(1.2, (-B - sq) / A);
+        const zEnd = Math.min(FAR, (-B + sq) / A);
+        let inside = false;
+        while (z < zEnd) {
+          const px = cam.x + dx * z, py = cam.y + dy * z;
+          const X = (px * RES) | 0, Y = (py * RES) | 0;
+          const f = Y * FW + X;
+          const m = X >= 0 && Y >= 0 && X < FW && Y < WORLD_H * RES ? D.mask[f] : 0;
+          if (m) {
+            const topH = m === 2 ? railH : deckH;
+            const ya = Math.max(0, Math.ceil(cam.horizon + (cam.eye - topH) * cam.focal / z));
+            const yb = Math.min(H - 1, Math.floor(cam.horizon + (cam.eye - underH) * cam.focal / z));
+            const fog = Math.min(0.75, Math.pow(z / FAR, 1.4) * 0.9);
+            const mid = (ya + yb) / 2;
+            for (let y = ya; y <= yb; y++) {
+              const di = y * W + i;
+              if (v.depth[di] <= z) continue;
+              let col;
+              if (!inside) {
+                // side face: railing on top, steel girder below, dark lower edge
+                const hw = cam.eye - (y + 0.5 - cam.horizon) * z / cam.focal;
+                if (hw > deckH) {
+                  const post = Math.floor((D.srF[f] + 200) / 3) % 2 === 0;
+                  col = hw > railH - 0.8 * HS ? [236, 236, 228] : post ? [204, 44, 34] : [238, 238, 232];
+                } else if (hw > deckH - 0.9 * HS) col = [150, 154, 162];
+                else if (hw < underH + 0.7 * HS) col = [46, 44, 52];
+                else col = [92, 96, 106];
+              } else if (y < mid && cam.eye > deckH) col = tr.deckColor(c, f);   // deck top, seen from above
+              else {
+                // underside with steel beams across it
+                const beam = Math.floor((D.srF[f] + 200) / 4) % 2 === 0;
+                col = beam ? [58, 52, 46] : [84, 74, 64];
+              }
+              v.buf[di] = fogMix(pack(col[0] * L[0], col[1] * L[1], col[2] * L[2]), fog);
+              v.depth[di] = z;
+            }
+            inside = true;
+          } else inside = false;
+          z += Math.max(0.2, z * 0.005);
         }
       }
     }
@@ -543,7 +576,7 @@ const Cockpit = (() => {
     const onBridge = tr => { const c = tr.upperCrossing(t.idx); return c && Math.abs(tr.sRel(c, t.idx, t.x, t.y)) < c.D + c.ramp; };
     const up = race.track.crossings.length && onBridge(race.track);
     drawTerrain(v, cam, up ? terrainUpper(race) : terrain(race));
-    if (!up) drawDeckUndersides(v, cam, race);
+    if (!up) drawDeckSlabs(v, cam, race);
     drawObjects(v, cam, race, t);
     v.g.putImageData(v.img, 0, 0);
     // the cab leans with the body roll, so the horizon tilts in corners
