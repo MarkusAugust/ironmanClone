@@ -563,8 +563,6 @@ class Track {
     const g = c.getContext('2d');
     const img = g.createImageData(FW, FH);
     const D = img.data;
-    const Lx = -0.5, Ly = -0.7, Lz = 1.1, Ll = Math.hypot(Lx, Ly, Lz);
-    const lx = Lx / Ll, ly = Ly / Ll, lz = Lz / Ll;
     const CROWD = [[220, 70, 60], [240, 220, 190], [70, 110, 200], [250, 200, 60], [60, 150, 80], [200, 200, 210], [150, 90, 60], [230, 120, 180]];
     const SKIN = [[236, 196, 160], [200, 150, 110], [150, 100, 70], [96, 64, 44]];
     this.waterPix = [];
@@ -646,29 +644,16 @@ class Track {
           if (fbm(wx * 0.05, wy * 0.05, seed + 40) > 0.66) { r = 120 * v; gg = 98 * v; b = 60 * v; }
           if (fine > 0.9975) { const fl = [[240, 240, 230], [250, 220, 90], [200, 140, 230]][Math.floor(hash2(X, Y, 99) * 3)]; [r, gg, b] = fl; }
         }
-        // slope lighting from the fine heights
-        const xm = Math.max(0, X - 1), xp = Math.min(FW - 1, X + 1);
-        const ym = Math.max(0, Y - 1), yp = Math.min(FH - 1, Y + 1);
-        const gx = (Vf[Y * FW + xp] - Vf[Y * FW + xm]) * R / 2;
-        const gy = (Vf[yp * FW + X] - Vf[ym * FW + X]) * R / 2;
-        const nl = Math.hypot(gx, gy, 1);
-        const dot = (-gx * lx - gy * ly + lz) / nl;
-        const shade = Math.max(0.5, Math.min(1.5, 1 + (dot - lz) * 1.9));
-        D[f * 4] = Math.min(255, r * shade);
-        D[f * 4 + 1] = Math.min(255, gg * shade);
-        D[f * 4 + 2] = Math.min(255, b * shade);
+        // no baked shading: the 3D scene lights the terrain
+        D[f * 4] = Math.min(255, r);
+        D[f * 4 + 1] = Math.min(255, gg);
+        D[f * 4 + 2] = Math.min(255, b);
         D[f * 4 + 3] = 255;
       }
     }
     g.putImageData(img, 0, 0);
 
-    // stadium rail under the stands
-    g.fillStyle = '#d0d0d8'; g.fillRect(0, (STANDS_Y - 1) * R, FW, 1);
-    g.fillStyle = '#9a9aa6'; g.fillRect(0, (STANDS_Y - 1) * R + 1, FW, 1);
-    g.fillStyle = '#4a4a56'; g.fillRect(0, STANDS_Y * R, FW, 2);
-    for (let x = 0; x < FW; x += 16) { g.fillStyle = '#7a7a86'; g.fillRect(x, (STANDS_Y - 1) * R, 1, R + 2); }
 
-    this.drawBoards(g);
 
     // tire stacks and hay bales on the infield
     let placed = 0;
@@ -678,144 +663,9 @@ class Track {
       const y = STANDS_Y + 8 + Math.floor(hash2(k, 2, seed) * (H - STANDS_Y - 14));
       if (this.dist[y * W + x] < 9) continue;
       const hay = placed % 3 === 1;
-      if (hay) this.drawHayBale(g, x, y); else this.drawTireStack(g, x, y);
       this.decor.push([x, y, hay ? 3 : 4.5]);
       placed++;
     }
     this.bg = c;
-  }
-
-  // Heights as drawn by the 3D views: terrain and berms, standing tire stacks, raked grandstand.
-  getViewHeights() {
-    if (this.viewH) return this.viewH;
-    const W = WORLD_W, H = WORLD_H;
-    const VH = Float32Array.from(this.V);
-    for (const [dx, dy, dh] of this.decor) {
-      for (let y = dy - 3; y <= dy + 1; y++) for (let x = dx - 3; x <= dx + 3; x++) {
-        if (x >= 0 && y >= 0 && x < W && y < H) VH[y * W + x] += dh;
-      }
-    }
-    for (const [x0, x1] of this.boards || []) {
-      for (let y = H - 10; y < H; y++) for (let x = x0 - 1; x <= x1; x++) VH[y * W + x] = Math.max(VH[y * W + x], 6);
-    }
-    for (let y = 0; y < STANDS_Y; y++) for (let x = 0; x < W; x++) VH[y * W + x] = (STANDS_Y - y) * 0.62 + 2;
-    this.viewH = VH;
-    return VH;
-  }
-
-  // Same at fine resolution, for the isometric diorama.
-  getViewHeightsFine() {
-    if (this.viewHF) return this.viewHF;
-    const R = RES, FW = WORLD_W * R, FH = WORLD_H * R;
-    const VH = Float32Array.from(this.Vf);
-    for (const [dx, dy, dh] of this.decor) {
-      for (let Y = (dy - 3) * R; Y <= (dy + 1.5) * R; Y++) for (let X = (dx - 3.5) * R; X <= (dx + 3.5) * R; X++) {
-        if (X >= 0 && Y >= 0 && X < FW && Y < FH) VH[Y * FW + X] += dh;
-      }
-    }
-    for (const [x0, x1] of this.boards || []) {
-      for (let Y = FH - 10 * R; Y < FH; Y++) for (let X = (x0 - 1) * R; X <= x1 * R; X++) VH[Y * FW + X] = Math.max(VH[Y * FW + X], 6);
-    }
-    for (let Y = 0; Y < STANDS_Y * R; Y++) {
-      const h = (STANDS_Y - (Y + 0.5) / R) * 0.62 + 2;
-      for (let X = 0; X < FW; X++) VH[Y * FW + X] = h;
-    }
-    this.viewHF = VH;
-    return VH;
-  }
-
-  // Isometric diorama: every fine terrain sample becomes a column as tall as its terrain,
-  // painted back to front so nearer columns cover farther ones.
-  getIsoBg() {
-    if (this.isoBg) return this.isoBg;
-    const R = RES, FW = WORLD_W * R, FH = WORLD_H * R, I = View.ISO;
-    const src = this.bg.getContext('2d').getImageData(0, 0, FW, FH).data;
-    const c = document.createElement('canvas');
-    c.width = FW; c.height = FH;
-    const g = c.getContext('2d');
-    const grad = g.createLinearGradient(0, 0, 0, FH);
-    grad.addColorStop(0, '#1b1524'); grad.addColorStop(1, '#09070c');
-    g.fillStyle = grad;
-    g.fillRect(0, 0, FW, FH);
-    for (const lx of [60, 200, 340]) {
-      const rg = g.createRadialGradient(lx * R, 18 * R, 0, lx * R, 18 * R, 60 * R);
-      rg.addColorStop(0, 'rgba(255,240,200,0.18)'); rg.addColorStop(1, 'rgba(255,240,200,0)');
-      g.fillStyle = rg; g.fillRect((lx - 60) * R, 0, 120 * R, 80 * R);
-    }
-    const img = g.getImageData(0, 0, FW, FH);
-    const D = new Uint32Array(img.data.buffer);
-    const S = new Uint32Array(src.buffer);
-    const pack = (r, gg, b) => (255 << 24) | ((b & 255) << 16) | ((gg & 255) << 8) | (r & 255);
-    const VH = this.getViewHeightsFine();
-    const slabTop = pack(70, 50, 34), slabLow = pack(40, 28, 20);
-    const water = [];
-    const ox = I.ox * R, oy = I.oy * R, hc = I.c * R, slab = I.slab * R;
-    for (let d = 0; d < FW + FH - 1; d++) {
-      const xa = Math.max(0, d - (FH - 1)), xb = Math.min(FW - 1, d);
-      for (let X = xa; X <= xb; X++) {
-        const Y = d - X, f = Y * FW + X;
-        const sx = Math.round(ox + (X - Y) * I.a);
-        if (sx < 0 || sx >= FW) continue;
-        const base = oy + (X + Y) * I.b;
-        const top = Math.round(base - VH[f] * hc);
-        const ground = Math.round(base);
-        const bottom = Math.round(base + slab);
-        const col = S[f];
-        const side = pack((col & 255) * 0.6, ((col >> 8) & 255) * 0.6, ((col >> 16) & 255) * 0.6);
-        const y0 = Math.max(0, top), y1 = Math.min(FH - 1, bottom);
-        for (let yy = y0; yy <= y1; yy++) {
-          D[yy * FW + sx] = yy === top ? col : yy < ground ? side : (yy === bottom ? slabLow : slabTop);
-        }
-      }
-    }
-    for (const f of this.waterPix) {
-      const X = f % FW, Y = (f / FW) | 0;
-      const sx = Math.round(ox + (X - Y) * I.a), top = Math.round(oy + (X + Y) * I.b - VH[f] * hc);
-      if (sx >= 0 && sx < FW && top >= 0 && top < FH) water.push(top * FW + sx);
-    }
-    g.putImageData(img, 0, 0);
-    this.isoWater = water;
-    this.isoBg = c;
-    return c;
-  }
-
-  drawHayBale(g, x, y) {
-    const R = RES, X = x * R, Y = y * R;
-    g.fillStyle = 'rgba(0,0,0,0.35)'; g.fillRect(X - 6, Y + 2, 20, 6);
-    g.fillStyle = '#a8822a'; g.fillRect(X - 8, Y - 6, 18, 10);
-    g.fillStyle = '#e4c058'; g.fillRect(X - 8, Y - 9, 18, 4);
-    for (let i = 0; i < 18; i += 2) { g.fillStyle = i % 4 ? '#c8a040' : '#f0d070'; g.fillRect(X - 8 + i, Y - 9, 1, 3); }
-    g.fillStyle = '#6a4a14'; g.fillRect(X - 4, Y - 9, 1, 13); g.fillRect(X + 4, Y - 9, 1, 13);
-  }
-
-  // Sponsor boards along the front edge of the stadium.
-  drawBoards(g) {
-    const R = RES, W = WORLD_W, H = WORLD_H;
-    const names = ['DIRTCO', 'NITRO-X', 'MUDLINE', 'GRIT OIL', 'ROCKJAW', 'TREADZ'];
-    const cols = [['#c8281c', '#fff'], ['#1c3c9c', '#ffd84a'], ['#f0c020', '#201810'], ['#1a1a1e', '#ff7020'], ['#2a7a3a', '#fff'], ['#e8e8e8', '#c8281c']];
-    this.boards = [];
-    for (let x0 = 2, k = (this.seed % names.length); x0 + 56 < W; x0 += 60, k++) {
-      let clear = true;
-      for (let x = x0; x < x0 + 56 && clear; x += 2) if (this.dist[(H - 4) * W + x] < 8) clear = false;
-      if (!clear) continue;
-      const [bg, fg] = cols[k % cols.length];
-      g.fillStyle = '#111'; g.fillRect((x0 - 1) * R, (H - 10) * R, 58 * R, 10 * R);
-      g.fillStyle = bg; g.fillRect(x0 * R, (H - 9) * R, 56 * R, 8 * R);
-      g.fillStyle = 'rgba(255,255,255,0.25)'; g.fillRect(x0 * R, (H - 9) * R, 56 * R, 1);
-      Font.draw(g, names[k % names.length], (x0 + 28) * R, (H - 9) * R + 2, fg, { align: 'center', scale: 2 });
-      this.boards.push([x0, x0 + 56]);
-    }
-  }
-
-  drawTireStack(g, x, y) {
-    const R = RES, X = x * R, Y = y * R;
-    g.fillStyle = 'rgba(0,0,0,0.35)';
-    g.beginPath(); g.ellipse(X + 3, Y + 3, 9, 4, 0, 0, Math.PI * 2); g.fill();
-    for (let i = 2; i >= 0; i--) {
-      const yy = Y - i * 4;
-      g.fillStyle = '#18181c'; g.beginPath(); g.ellipse(X, yy, 8, 4, 0, 0, Math.PI * 2); g.fill();
-      g.fillStyle = '#34343c'; g.beginPath(); g.ellipse(X, yy - 1, 7, 3, 0, Math.PI, Math.PI * 2); g.fill();
-    }
-    g.fillStyle = '#060608'; g.beginPath(); g.ellipse(X, Y - 9, 3, 1.4, 0, 0, Math.PI * 2); g.fill();
   }
 }

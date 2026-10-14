@@ -102,8 +102,6 @@ class Race {
     this.bgCtx = this.bg.getContext('2d');
     this.bgCtx.drawImage(track.bg, 0, 0);
 
-    if (View.iso) this.background(); // build the diorama now, not mid-race
-    if (View.fp) Cockpit.terrain(this);
 
     this.pickups = [];
     this.particles = [];
@@ -341,12 +339,6 @@ class Race {
     this.bgCtx.fillStyle = col;
     this.bgCtx.globalAlpha = 0.55;
     this.bgCtx.fillRect(Math.round(x * RES), Math.round(y * RES), 3, 2);
-    if (this.isoCtx) {
-      const I = View.ISO, gh = this.track.heightAt(x, y);
-      this.isoCtx.fillStyle = col; this.isoCtx.globalAlpha = 0.55;
-      this.isoCtx.fillRect(Math.round((I.ox + (x - y) * I.a) * RES), Math.round((I.oy + (x + y) * I.b - gh * I.c) * RES), 2, 1);
-      this.isoCtx.globalAlpha = 1;
-    }
     this.bgCtx.globalAlpha = 1;
   }
 
@@ -358,14 +350,9 @@ class Race {
     const c = Math.cos(t.h), s = Math.sin(t.h);
     const a = surf === SURF.MUD ? 0.12 : Math.min(0.16, 0.012 + t.slip * 0.004);
     this.bgCtx.fillStyle = surf === SURF.MUD ? `rgba(40,24,12,${a})` : `rgba(90,56,26,${a})`;
-    if (this.isoCtx) this.isoCtx.fillStyle = this.bgCtx.fillStyle;
     for (const side of [-4, 4]) {
       const x = t.x - c * 5 - s * side, y = t.y - s * 5 + c * side;
       this.bgCtx.fillRect(Math.round(x * RES), Math.round(y * RES), 2, 2);
-      if (this.isoCtx) {
-        const I = View.ISO, gh = this.track.heightAt(x, y);
-        this.isoCtx.fillRect(Math.round((I.ox + (x - y) * I.a) * RES), Math.round((I.oy + (x + y) * I.b - gh * I.c) * RES), 2, 1);
-      }
     }
   }
 
@@ -407,111 +394,43 @@ class Race {
   }
 
   // ---------------- drawing ----------------
-  // Background for the current view. The iso copy is made on first use so tire marks can build up on it too.
-  background() {
-    if (!View.iso) return this.bg;
-    if (!this.isoBg) {
-      this.isoBg = document.createElement('canvas');
-      this.isoBg.width = WORLD_W * RES; this.isoBg.height = WORLD_H * RES;
-      this.isoCtx = this.isoBg.getContext('2d');
-      this.isoCtx.drawImage(this.track.getIsoBg(), 0, 0);
-    }
-    return this.isoBg;
-  }
-
+  // The 3D scene draws the world; this draws everything on the overlay on top of it:
+  // labels over trucks, confetti, the HUD, the cockpit and race messages.
   render(ctx, opts = {}) {
-    const tr = this.track;
-    const sh = this.shake && !opts.noOverlay ? this.shake : 0;
-    const jx = sh ? Math.round((Math.random() * 2 - 1) * sh) : 0, jy = sh ? Math.round((Math.random() * 2 - 1) * sh) : 0;
-    if (View.fp) {
+    const drawn = Scene3D.render(this, opts);
+    if (!drawn) {
       ctx.fillStyle = '#0d0b10'; ctx.fillRect(0, 0, WORLD_W, WORLD_H);
-      ctx.save(); ctx.translate(jx, jy);
-      Cockpit.render(ctx, this, opts.noHud ? 0 : 20);
-      ctx.restore();
-      Stadium.drawConfetti(ctx, this);
-      if (!opts.noHud) this.drawHud(ctx);
-      if (!opts.noOverlay) this.drawOverlays(ctx);
-      return;
+      Font.draw(ctx, '3D GRAPHICS (WEBGL) ARE NOT AVAILABLE', WORLD_W / 2, 140, '#ff7060', { align: 'center' });
+      Font.draw(ctx, 'IN THIS BROWSER', WORLD_W / 2, 152, '#ff7060', { align: 'center' });
     }
-    ctx.save();
-    ctx.translate(jx, jy);
-    ctx.drawImage(this.background(), 0, 0, WORLD_W, WORLD_H);
-    // shimmering water
-    const water = View.iso ? tr.isoWater : tr.waterPix;
-    if (water.length) {
-      ctx.fillStyle = 'rgba(220,240,255,0.75)';
-      const n = Math.min(30, water.length / 20);
-      for (let i = 0; i < n; i++) {
-        const p = water[(Math.random() * water.length) | 0];
-        ctx.fillRect((p % (WORLD_W * RES)) / RES, ((p / (WORLD_W * RES)) | 0) / RES, 1 / RES, 1 / RES);
+    const tr = this.track;
+    const fp = View.fp;
+    if (!fp) {
+      for (const f of this.floaters) {
+        const p = Scene3D.project(f.x, f.y, tr.groundAt(f.x, f.y) + 10);
+        if (p) Font.draw(ctx, f.text, p[0], p[1] - f.off, f.col, { align: 'center', shadow: '#000' });
       }
-    }
-    Stadium.drawCrowd(ctx, this);
-    Stadium.drawPennants(ctx, this);
-    // pickups
-    for (const p of this.pickups) {
-      if (p.life < 2 && Math.floor(p.life * 8) % 2 === 0) continue;
-      const spr = PICKUP_SPRITES[p.type];
-      const bob = Math.sin(this.time * 6 + p.x) > 0 ? 1 : 0;
-      const [sx, sy] = View.point(p.x, p.y, tr.heightAt(p.x, p.y), 0);
-      ctx.fillStyle = 'rgba(0,0,0,0.3)';
-      ctx.fillRect(Math.round(sx - 3), Math.round(sy + 2), 7, 2);
-      const w = spr.width / spr.res, h = spr.height / spr.res;
-      ctx.drawImage(spr, Math.round(sx - w / 2), Math.round(sy - h + 2 - bob), w, h);
-    }
-    Stadium.drawFlagman(ctx, this);
-    FX.draw(ctx, this, true);
-    const sun = Mood.of(tr).sun;
-    const sorted = this.trucks.slice().sort((a, b) => View.depth(a.x, a.y) - View.depth(b.x, b.y));
-    if (tr.crossings.length) this.drawWithBridges(ctx, sorted, sun);
-    else for (const t of sorted) t.draw(ctx, tr, this.time, sun);
-    FX.draw(ctx, this, false);
-    Stadium.drawGantry(ctx, this);
-    // light: multiply the mood over the world, then add headlights at night
-    ctx.globalCompositeOperation = 'multiply';
-    ctx.imageSmoothingEnabled = !View.iso;
-    ctx.drawImage(Mood.overlay(tr, View.mode), 0, 0, WORLD_W, WORLD_H);
-    ctx.imageSmoothingEnabled = false;
-    ctx.globalCompositeOperation = 'source-over';
-    Mood.headlights(ctx, this);
-
-    for (const f of this.floaters) {
-      const [sx, sy] = View.point(f.x, f.y, tr.heightAt(f.x, f.y), 0);
-      Font.draw(ctx, f.text, sx, sy - f.off, f.col, { align: 'center', shadow: '#000' });
-    }
-    // player markers
-    if (!this.demo && !opts.noOverlay) {
-      for (const t of this.trucks) if (t.human) {
-        const gh = tr.heightAt(t.x, t.y, t.idx);
-        const lift = Math.max(0, t.z - gh) * 1.5;
-        const [sx, sy] = View.point(t.x, t.y, gh, lift);
-        if (this.phase !== 'run' || this.raceTime < 3) Font.draw(ctx, `P${t.player + 1}`, sx, sy - 24, t.def.hud, { align: 'center', shadow: '#000' });
-        if (t.wrongWayT > 50 && !t.finished && Math.floor(this.time * 4) % 2 === 0) {
-          Font.draw(ctx, 'WRONG WAY', sx, sy - 26, '#ff4040', { align: 'center', shadow: '#000' });
+      // player markers
+      if (!this.demo && !opts.noOverlay) {
+        for (const t of this.trucks) if (t.human) {
+          const p = Scene3D.project(t.x, t.y, t.z + 12);
+          if (!p) continue;
+          if (this.phase !== 'run' || this.raceTime < 3) Font.draw(ctx, `P${t.player + 1}`, p[0], p[1] - 8, t.def.hud, { align: 'center', shadow: '#000' });
+          if (t.wrongWayT > 50 && !t.finished && Math.floor(this.time * 4) % 2 === 0) {
+            Font.draw(ctx, 'WRONG WAY', p[0], p[1] - 10, '#ff4040', { align: 'center', shadow: '#000' });
+          }
         }
       }
+    } else if (!opts.noOverlay || this.demo || opts.noHud) {
+      Cockpit.render(ctx, this);
     }
-    ctx.restore();
+    if (View.chase && Scene3D.views.length > 1) {
+      ctx.fillStyle = '#ffd84a';
+      ctx.fillRect(0, Scene3D.views[0].rect.y + Scene3D.views[0].rect.h, WORLD_W, 2);
+    }
     Stadium.drawConfetti(ctx, this);
     if (!opts.noHud) this.drawHud(ctx);
     if (!opts.noOverlay) this.drawOverlays(ctx);
-  }
-
-  // Trucks under a bridge are drawn before its deck, trucks on it after.
-  // In the isometric view a truck clearly in front of the bridge is drawn after it too.
-  drawWithBridges(ctx, sorted, sun) {
-    const tr = this.track, iso = View.iso;
-    const parts = tr.crossings.map(c => iso ? tr.deckIso(c) : tr.deckTop(c));
-    for (const p of parts) ctx.drawImage(p.shadow, 0, 0, WORLD_W, WORLD_H);
-    const before = [], after = [];
-    for (const t of sorted) {
-      const upper = tr.upperCrossing(t.idx);
-      const front = iso && tr.crossings.some(c => t.x + t.y > c.x + c.y + (c.D + tr.halfW) * 1.2);
-      (upper || front ? after : before).push(t);
-    }
-    for (const t of before) t.draw(ctx, tr, this.time, sun);
-    for (const p of parts) ctx.drawImage(p.deck, 0, 0, WORLD_W, WORLD_H);
-    for (const t of after) t.draw(ctx, tr, this.time, sun);
   }
 
   drawHud(ctx) {

@@ -145,39 +145,5 @@ const FX = (() => {
     if (race.shake) race.shake = race.shake < 0.15 ? 0 : race.shake * Math.exp(-9 * dt);
   }
 
-  // ---- drawing (2D and isometric) ----
-  function draw(ctx, race, low) {
-    const tr = race.track;
-    for (const p of race.particles) {
-      const isLow = p.z < 3 && p.k !== 'flame';
-      if (isLow !== low) continue;
-      const f = p.age / p.life;
-      const [sx, sy] = View.point(p.x, p.y, View.iso ? (p.base != null ? p.base : tr.heightAt(p.x, p.y)) : 0, p.z);
-      if (p.k === 'puff') {
-        const r = p.r0 + (p.r1 - p.r0) * Math.sqrt(f);
-        ctx.globalAlpha = p.a0 * (1 - f);
-        ctx.fillStyle = p.col;
-        ctx.beginPath(); ctx.arc(sx, sy, r * (View.iso ? 0.8 : 1), 0, Math.PI * 2); ctx.fill();
-      } else if (p.k === 'ring') {
-        const r = p.r0 + (p.r1 - p.r0) * f;
-        ctx.globalAlpha = 0.7 * (1 - f);
-        ctx.strokeStyle = p.col; ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.ellipse(sx, sy, r * (View.iso ? 0.85 : 1), r * (View.iso ? 0.5 : 0.8), 0, 0, Math.PI * 2); ctx.stroke();
-      } else if (p.k === 'flame' || p.k === 'spark') {
-        ctx.globalCompositeOperation = 'lighter';
-        ctx.globalAlpha = 1 - f * 0.6;
-        ctx.fillStyle = p.k === 'spark' ? p.col : f < 0.25 ? '#fff6d0' : f < 0.5 ? '#ffd040' : f < 0.75 ? '#ff8a20' : '#c83010';
-        const sz = p.k === 'flame' ? (f < 0.5 ? 3 : 2) : 1;
-        ctx.fillRect(Math.round(sx - sz / 2), Math.round(sy - sz / 2), sz, sz);
-        ctx.globalCompositeOperation = 'source-over';
-      } else {
-        ctx.globalAlpha = 1;
-        ctx.fillStyle = p.col;
-        ctx.fillRect(Math.round(sx), Math.round(sy), 2, 2);
-      }
-    }
-    ctx.globalAlpha = 1;
-  }
-
-  return { emit, update, draw, nitroStart, wallHit, landing, rgb };
+  return { emit, update, nitroStart, wallHit, landing, rgb };
 })();

@@ -49,11 +49,18 @@
     max-width: 100%;
     box-sizing: border-box;
   }
+  #stage { position: relative; }
+  #world {
+    display: block;
+    background: #000;
+    border-radius: 3px;
+  }
   #screen {
+    position: absolute; left: 0; top: 0;
     display: block;
     image-rendering: pixelated;
     image-rendering: crisp-edges;
-    background: #000;
+    background: transparent;
     border-radius: 3px;
     max-width: 100%;
   }
@@ -101,8 +108,13 @@
 </head>
 <body>
 <div id="wrap">
-  <div id="bezel"><canvas id="screen" width="800" height="600" aria-label="Iron Dirt game screen"></canvas></div>
-  <button type="button" id="viewBtn" title="Switch between isometric 3D and top-down 2D (V)">VIEW: ISO 3D</button>
+  <div id="bezel">
+    <div id="stage">
+      <canvas id="world" aria-hidden="true"></canvas>
+      <canvas id="screen" width="800" height="600" aria-label="Iron Dirt game screen"></canvas>
+    </div>
+  </div>
+  <button type="button" id="viewBtn" title="Switch camera: isometric, chase, cockpit, top-down (V)">VIEW: ISOMETRIC</button>
   <div id="legend">
     <span><b>P1</b> <kbd>&larr;</kbd><kbd>&rarr;</kbd> steer <kbd>&uarr;</kbd> gas <kbd>&darr;</kbd> reverse <kbd>R-Shift</kbd>/<kbd>Enter</kbd> nitro</span>
     <span><b>P2</b> <kbd>A</kbd><kbd>D</kbd> steer <kbd>W</kbd> gas <kbd>S</kbd> reverse <kbd>Q</kbd>/<kbd>L-Shift</kbd> nitro</span>
@@ -119,6 +131,7 @@
     <button type="button" class="nitro" data-key="ShiftRight" aria-label="Nitro">NITRO</button>
   </div>
 </div>
+<script src="vendor/three.min.js"></script>
 <script src="src/font.js"></script>
 <script src="src/audio.js"></script>
 <script src="src/input.js"></script>
@@ -126,12 +139,12 @@
 <script src="src/tracks.js"></script>
 <script src="src/track.js"></script>
 <script src="src/mood.js"></script>
-<script src="src/bridge.js"></script>
 <script src="src/truck.js"></script>
 <script src="src/ai.js"></script>
 <script src="src/fx.js"></script>
 <script src="src/stadium.js"></script>
 <script src="src/race.js"></script>
+<script src="src/scene3d.js"></script>
 <script src="src/cockpit.js"></script>
 <script src="src/game.js"></script>
 <script src="src/layout.js"></script>

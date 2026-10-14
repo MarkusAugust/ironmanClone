@@ -228,24 +228,7 @@ const TruckSprites = (() => {
     return cache[key];
   }
 
-  // Footprint shadow cast along the sun direction.
-  function drawShadow(ctx, t, track, sun) {
-    const gh = track.heightAt(t.x, t.y, t.idx);
-    const lift = Math.max(0, t.z - gh) * 1.5;
-    const c = Math.cos(t.h), s = Math.sin(t.h);
-    const off = 4 + lift;
-    const dx = sun[0] * off, dy = sun[1] * off;
-    const corners = [[8.4, 6.4], [8.4, -6.4], [-8.4, -6.4], [-8.4, 6.4]].map(([x, y]) =>
-      View.point(t.x + x * c - y * s + dx * 0.5, t.y + x * s + y * c + dy * 0.5, gh, 0));
-    const a = Math.max(0.12, 0.38 - lift * 0.01) * (sun[2] == null ? 1 : sun[2]);
-    ctx.fillStyle = `rgba(10,6,4,${a})`;
-    ctx.beginPath();
-    corners.forEach((p, i) => i ? ctx.lineTo(Math.round(p[0]), Math.round(p[1])) : ctx.moveTo(Math.round(p[0]), Math.round(p[1])));
-    ctx.closePath();
-    ctx.fill();
-  }
-
-  return { get, drawShadow, VARIANTS };
+  return { get, model, VARIANTS };
 })();
 
 class Truck {
@@ -421,30 +404,4 @@ class Truck {
   }
 
   progress(track) { return this.crossings * track.N + this.idx; }
-
-  // Which pre-rendered variant fits right now: wheels roll, suspension squats or hangs.
-  spriteVariant(t) {
-    this.treadT = (this.treadT || 0) + Math.abs(this.forward) * 0.02;
-    const phase = Math.floor(this.treadT) % 2;
-    let susp = 1;
-    if (this.air) susp = 2;
-    else if (this.bumpT > 0.05) susp = 0;
-    const roll = this.roll > 0.35 ? 2 : this.roll < -0.35 ? 0 : 1;
-    return phase + susp * 2 + roll * 6;
-  }
-
-  draw(ctx, track, t, sun) {
-    const gh = track.heightAt(this.x, this.y, this.idx);
-    const lift = Math.max(0, this.z - gh) * 1.5;
-    TruckSprites.drawShadow(ctx, this, track, sun || [0.5, 0.6]);
-    const a = this.h / (Math.PI * 2) * SPRITE_STEPS;
-    let fi = Math.round(a) % SPRITE_STEPS;
-    if (fi < 0) fi += SPRITE_STEPS;
-    const surf = track.surfAt(this.x, this.y);
-    const bob = (!this.air && this.speed > 20 && surf !== SURF.DIRT) ? ((t * 20 | 0) % 2) : 0;
-    const spr = TruckSprites.get(this.slot, View.mode, this.spriteVariant(t))[fi];
-    const [px, py] = View.point(this.x, this.y, gh, lift + bob);
-    const k = spr.res;
-    ctx.drawImage(spr, Math.round(px * k - spr.ox) / k, Math.round(py * k - spr.oy) / k, spr.width / k, spr.height / k);
-  }
 }

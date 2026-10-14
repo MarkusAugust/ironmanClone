@@ -160,6 +160,7 @@ function startRace() {
   const variant = (career.season - 1) % 4;
   const track = getTrack(career.race % TRACK_DEFS.length, variant);
   const humans = career.players.filter(p => p.active).length;
+  Scene3D.release(race);
   race = new Race(track, entrants(), {
     numHumans: career.numHumans === 2 && humans === 2 ? 2 : 1,
     season: career.season, raceNo: career.race + 1, diffLabel: diffOf(career).label,
@@ -232,6 +233,7 @@ function setState(s) { state = s; stateT = 0; paused = false; }
 
 function toTitle() {
   if (race) race.stopSounds();
+  Scene3D.release(race);
   race = null; career = null; shop = null;
   setState('title');
   Sound.playMusic('title');
@@ -246,7 +248,7 @@ function newDemo() {
     up: slot === 3 ? { tires: 3, shocks: 3, accel: 3, speed: 3 } : { tires: 2, shocks: 2, accel: 2, speed: 2 },
     nitros: 3, topMul: 1,
   }));
-  demo = new Race(track, ent, { demo: true, onEnd: () => { demo = null; } });
+  demo = new Race(track, ent, { demo: true, onEnd: () => { Scene3D.release(demo); demo = null; } });
 }
 
 // ---------------- view switching ----------------
@@ -446,9 +448,12 @@ function shopTap(pos) {
 
 // ---------------- render ----------------
 function render() {
-  // all drawing uses 400x300 game coordinates; detailed art is drawn at RES x
+  // the overlay uses 400x300 game coordinates at RES x; the 3D scene draws underneath
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.setTransform(RES, 0, 0, RES, 0, 0);
   ctx.imageSmoothingEnabled = false;
+  Scene3D.clear();
   switch (state) {
     case 'title': renderTitle(); break;
     case 'race':
@@ -559,7 +564,7 @@ function renderHelp() {
   line('P2  W A S D: STEER / GAS / REVERSE');
   line('    NITRO: Q OR LEFT SHIFT');
   line('ONE PLAYER CAN USE EITHER SET. PROGRESS AUTOSAVES.');
-  line('V: VIEW (ISO 3D / COCKPIT / 2D)  P: PAUSE  M: SOUND');
+  line('V: VIEW (ISO/CHASE/COCKPIT/TOP) P: PAUSE M: SOUND');
   y += 4;
   line('RULES', H);
   line('RACE 4 LAPS AGAINST THE CPU AND THE TITAN.');
@@ -821,6 +826,7 @@ function frame(now) {
 }
 
 function start(data) {
+  Scene3D.init(document.getElementById('world'));
   setupTouch();
   const btn = document.getElementById('viewBtn');
   if (btn) {
